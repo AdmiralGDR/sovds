@@ -97,7 +97,7 @@ impl FileRecorder {
 }
 
 /// `path` with a `.N` suffix appended.
-fn suffixed(path: &Path, generation: u32) -> PathBuf {
+pub(crate) fn suffixed(path: &Path, generation: u32) -> PathBuf {
     let mut name = path.as_os_str().to_os_string();
     name.push(format!(".{generation}"));
     PathBuf::from(name)

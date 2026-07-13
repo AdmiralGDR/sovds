@@ -11,6 +11,10 @@ publish = false
 name = "sovereign"
 path = "src/main.rs"
 
+[[bin]]
+name = "sovereign-inspect"
+path = "src/bin/inspect.rs"
+
 [dependencies]
 sovereign-core = { path = "../core" }
 sovereign-adapters = { path = "../adapters" }

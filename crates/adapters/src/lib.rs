@@ -12,8 +12,10 @@
 //! parser ([`telemetry::parse_snapshot`]) before ever reaching the core.
 
 pub mod actuator;
+pub mod dataset;
 pub mod notify;
 pub mod os;
 pub mod recorder;
 pub mod ssh;
+pub mod summary;
 pub mod telemetry;

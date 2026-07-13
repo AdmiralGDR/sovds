@@ -19,5 +19,7 @@
 pub mod domain;
 pub mod error;
 pub mod failure;
+pub mod fleet;
 pub mod fsm;
 pub mod ports;
+pub mod stats;

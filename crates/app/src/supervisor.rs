@@ -10,6 +10,7 @@
 
 use sovereign_core::domain::{Dns, NodeId, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES};
 use sovereign_core::error::ActError;
+use sovereign_core::fleet::{refine_tunnel, Fleet};
 use sovereign_core::fsm::{decide, Action, Config, Reason, State};
 use sovereign_core::ports::{Actuator, Notifier, TelemetrySource};
 use std::time::Duration;
@@ -35,6 +36,9 @@ pub struct Supervisor<T, A, N> {
     cfg: Config,
     state: State,
     tick: u64,
+    /// Adaptive perception: learns each path/node's own baseline online so the
+    /// classifier can flag relative degradation, not just absolute thresholds.
+    fleet: Fleet,
 }
 
 impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
@@ -47,6 +51,7 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
             cfg,
             state: State::Healthy,
             tick: 0,
+            fleet: Fleet::new(),
         }
     }
 
@@ -58,13 +63,27 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
     /// Run exactly one supervision cycle and report what happened.
     pub fn step(&mut self) -> StepReport {
         let now = Tick(self.tick);
-        let (telemetry, probed) = match self.telemetry.sample() {
+        let (mut telemetry, probed) = match self.telemetry.sample() {
             Ok(observation) => (observation, true),
             // Graceful degradation: an unobservable system is treated as all
             // Unknown, which classifies as "no fault" — so a probe outage can
             // never, by itself, trigger a disruptive action.
             Err(_) => (all_unknown(), false),
         };
+
+        // Adaptive perception: feed the observation into the learned models, then
+        // let the path's own baseline refine the tunnel signal. A path that is
+        // throttled or abnormally slow *for itself* is escalated to Degraded even
+        // when its absolute latency is still under the static budget — this is the
+        // intelligence the fixed threshold cannot provide.
+        let path_latency = match telemetry.tunnel {
+            Tunnel::Healthy { latency } => Some(latency),
+            Tunnel::Degraded { latency } => Some(latency),
+            Tunnel::Dead | Tunnel::Unknown => None,
+        };
+        let verdict = self.fleet.observe_path(path_latency);
+        self.fleet.observe_nodes(&telemetry.nodes);
+        telemetry.tunnel = refine_tunnel(telemetry.tunnel, verdict);
 
         let transition = decide(self.state, &telemetry, &self.cfg, now);
         self.state = transition.next;
@@ -181,6 +200,14 @@ mod tests {
         t
     }
 
+    fn with_tunnel_latency(ms: u32) -> Telemetry {
+        let mut t = healthy();
+        t.tunnel = Tunnel::Healthy {
+            latency: LatencyMs(ms),
+        };
+        t
+    }
+
     /// Replays a fixed script of samples; past the end it returns healthy.
     struct ScriptedTelemetry {
         samples: Vec<Result<Telemetry, ProbeError>>,
@@ -273,6 +300,38 @@ mod tests {
         let r3 = sup.step();
         assert_eq!(r3.reason, Reason::Recovered);
         assert_eq!(sup.state(), State::Healthy);
+    }
+
+    #[test]
+    fn learns_a_throttle_below_the_static_threshold() {
+        // Every latency here stays far under the 300 ms static budget, so the
+        // fixed classifier alone would see nothing. But after the path's baseline
+        // settles near 50 ms, a sustained jump to 150 ms is abnormal *for this
+        // path*, and the adaptive layer must surface it as a degradation and
+        // trigger a node switch.
+        let mut samples = vec![Ok(with_tunnel_latency(50)); 5];
+        samples.extend(vec![Ok(with_tunnel_latency(150)); 4]);
+        let telemetry = ScriptedTelemetry {
+            samples,
+            idx: Cell::new(0),
+        };
+        let mut sup = Supervisor::new(
+            telemetry,
+            RecordingActuator::default(),
+            CountingNotifier::default(),
+            cfg(),
+        );
+
+        let mut switched = false;
+        for _ in 0..9 {
+            if sup.step().action == Action::SwitchNode {
+                switched = true;
+            }
+        }
+        assert!(
+            switched,
+            "a relative throttle under the static budget must trigger a switch"
+        );
     }
 
     #[test]

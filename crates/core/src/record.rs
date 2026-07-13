@@ -12,7 +12,7 @@
 //! on-device, a `String` in the file adapter). The record schema itself never
 //! touches I/O (the principle).
 
-use crate::domain::{Dns, Proc, Telemetry, Tick, Tunnel, Wan};
+use crate::domain::{Dns, LatencyMs, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES};
 use crate::failure::FailureClass;
 use crate::fleet::NodeVerdict;
 use crate::fsm::{Action, Reason, State};
@@ -72,7 +72,7 @@ pub fn write_record<W: Write>(w: &mut W, r: &Record) -> core::fmt::Result {
     w.write_str(" state=")?;
     write_state(w, r.state)?;
     w.write_str(" reason=")?;
-    w.write_str(reason_label(r.reason))?;
+    write_reason(w, r.reason)?;
     w.write_str(" action=")?;
     w.write_str(action_label(r.action))?;
     w.write_str(" outcome=")?;
@@ -155,15 +155,22 @@ const fn failure_label(f: FailureClass) -> &'static str {
     }
 }
 
-const fn reason_label(r: Reason) -> &'static str {
-    match r {
-        Reason::Nominal => "nominal",
-        Reason::FirstSuspicion(_) => "first_suspicion",
-        Reason::AwaitingConfirmation { .. } => "awaiting",
-        Reason::Recovered => "recovered",
-        Reason::Confirmed { .. } => "confirmed",
-        Reason::CoolingDown => "cooling",
-        Reason::Escalated { .. } => "escalated",
+/// Serialize a reason losslessly, including its payload, so it round-trips.
+fn write_reason<W: Write>(w: &mut W, reason: Reason) -> core::fmt::Result {
+    match reason {
+        Reason::Nominal => w.write_str("nominal"),
+        Reason::FirstSuspicion(class) => write!(w, "first_suspicion:{}", failure_label(class)),
+        Reason::AwaitingConfirmation { failing, seen } => {
+            write!(w, "awaiting:{}:{}", failure_label(failing), seen)
+        }
+        Reason::Recovered => w.write_str("recovered"),
+        Reason::Confirmed { failing, level } => {
+            write!(w, "confirmed:{}:{}", failure_label(failing), level)
+        }
+        Reason::CoolingDown => w.write_str("cooling"),
+        Reason::Escalated { failing, level } => {
+            write!(w, "escalated:{}:{}", failure_label(failing), level)
+        }
     }
 }
 
@@ -186,9 +193,265 @@ const fn outcome_label(o: Outcome) -> &'static str {
     }
 }
 
+/// Why a serialized record line could not be parsed back. The offending line is
+/// the caller's context (the principle): kind plus line is enough to reproduce.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ParseError {
+    /// A `key=value` token was malformed or a value did not parse.
+    BadField,
+    /// A required field was absent.
+    MissingField,
+    /// An unrecognized key was present.
+    UnknownKey,
+}
+
+/// Parse one serialized line back into a [`Record`]. The exact inverse of
+/// [`write_record`], and a boundary guard: any malformed input is rejected rather
+/// than trusted (the principle). Note the node table is not serialized, so it parses
+/// back empty — everything else round-trips exactly.
+///
+/// # Errors
+/// Returns [`ParseError`] on a malformed, incomplete, or unknown-key line.
+pub fn parse_record(line: &str) -> Result<Record, ParseError> {
+    let mut tick: Option<Tick> = None;
+    let mut probed: Option<bool> = None;
+    let mut wan: Option<Wan> = None;
+    let mut singbox: Option<Proc> = None;
+    let mut tunnel: Option<Tunnel> = None;
+    let mut dns: Option<Dns> = None;
+    let mut verdict: Option<NodeVerdict> = None;
+    let mut failure: Option<FailureClass> = None;
+    let mut state: Option<State> = None;
+    let mut reason: Option<Reason> = None;
+    let mut action: Option<Action> = None;
+    let mut outcome: Option<Outcome> = None;
+
+    for token in line.split_whitespace() {
+        let (key, value) = token.split_once('=').ok_or(ParseError::BadField)?;
+        match key {
+            "t" => tick = Some(Tick(parse_u64(value)?)),
+            "probed" => probed = Some(parse_bool(value)?),
+            "wan" => wan = Some(parse_wan(value)?),
+            "sb" => singbox = Some(parse_proc(value).ok_or(ParseError::BadField)?),
+            "tun" => tunnel = Some(parse_tunnel(value)?),
+            "dns" => dns = Some(parse_dns(value).ok_or(ParseError::BadField)?),
+            "verdict" => verdict = Some(parse_verdict(value).ok_or(ParseError::BadField)?),
+            "class" => failure = Some(parse_failure(value).ok_or(ParseError::BadField)?),
+            "state" => state = Some(parse_state(value)?),
+            "reason" => reason = Some(parse_reason(value)?),
+            "action" => action = Some(parse_action(value).ok_or(ParseError::BadField)?),
+            "outcome" => outcome = Some(parse_outcome(value).ok_or(ParseError::BadField)?),
+            _ => return Err(ParseError::UnknownKey),
+        }
+    }
+
+    Ok(Record {
+        tick: tick.ok_or(ParseError::MissingField)?,
+        probed: probed.ok_or(ParseError::MissingField)?,
+        telemetry: Telemetry {
+            wan: wan.ok_or(ParseError::MissingField)?,
+            singbox: singbox.ok_or(ParseError::MissingField)?,
+            tunnel: tunnel.ok_or(ParseError::MissingField)?,
+            dns: dns.ok_or(ParseError::MissingField)?,
+            nodes: [None; MAX_NODES],
+        },
+        path_verdict: verdict.ok_or(ParseError::MissingField)?,
+        failure: failure.ok_or(ParseError::MissingField)?,
+        state: state.ok_or(ParseError::MissingField)?,
+        reason: reason.ok_or(ParseError::MissingField)?,
+        action: action.ok_or(ParseError::MissingField)?,
+        outcome: outcome.ok_or(ParseError::MissingField)?,
+    })
+}
+
+fn parse_u64(value: &str) -> Result<u64, ParseError> {
+    value.parse::<u64>().map_err(|_| ParseError::BadField)
+}
+
+fn parse_u8(value: &str) -> Result<u8, ParseError> {
+    value.parse::<u8>().map_err(|_| ParseError::BadField)
+}
+
+fn parse_u32(value: &str) -> Result<u32, ParseError> {
+    value.parse::<u32>().map_err(|_| ParseError::BadField)
+}
+
+fn parse_bool(value: &str) -> Result<bool, ParseError> {
+    match value {
+        "1" => Ok(true),
+        "0" => Ok(false),
+        _ => Err(ParseError::BadField),
+    }
+}
+
+fn parse_wan(value: &str) -> Result<Wan, ParseError> {
+    match value {
+        "down" => Ok(Wan::Down),
+        "unknown" => Ok(Wan::Unknown),
+        other => {
+            let (tag, rest) = other.split_once(':').ok_or(ParseError::BadField)?;
+            if tag != "up" {
+                return Err(ParseError::BadField);
+            }
+            Ok(Wan::Up {
+                uptime_s: parse_u32(rest)?,
+            })
+        }
+    }
+}
+
+fn parse_tunnel(value: &str) -> Result<Tunnel, ParseError> {
+    match value {
+        "dead" => Ok(Tunnel::Dead),
+        "unknown" => Ok(Tunnel::Unknown),
+        other => {
+            let (tag, rest) = other.split_once(':').ok_or(ParseError::BadField)?;
+            let latency = LatencyMs(parse_u32(rest)?);
+            match tag {
+                "ok" => Ok(Tunnel::Healthy { latency }),
+                "deg" => Ok(Tunnel::Degraded { latency }),
+                _ => Err(ParseError::BadField),
+            }
+        }
+    }
+}
+
+fn parse_state(value: &str) -> Result<State, ParseError> {
+    let mut parts = value.split(':');
+    match parts.next() {
+        Some("healthy") => Ok(State::Healthy),
+        Some("suspect") => {
+            let failing = next_failure(&mut parts)?;
+            let seen = next_u8(&mut parts)?;
+            Ok(State::Suspect { failing, seen })
+        }
+        Some("cooldown") => {
+            let failing = next_failure(&mut parts)?;
+            let level = next_u8(&mut parts)?;
+            let until = Tick(next_u64(&mut parts)?);
+            Ok(State::Cooldown {
+                failing,
+                level,
+                until,
+            })
+        }
+        _ => Err(ParseError::BadField),
+    }
+}
+
+fn parse_reason(value: &str) -> Result<Reason, ParseError> {
+    let mut parts = value.split(':');
+    match parts.next() {
+        Some("nominal") => Ok(Reason::Nominal),
+        Some("recovered") => Ok(Reason::Recovered),
+        Some("cooling") => Ok(Reason::CoolingDown),
+        Some("first_suspicion") => Ok(Reason::FirstSuspicion(next_failure(&mut parts)?)),
+        Some("awaiting") => {
+            let failing = next_failure(&mut parts)?;
+            let seen = next_u8(&mut parts)?;
+            Ok(Reason::AwaitingConfirmation { failing, seen })
+        }
+        Some("confirmed") => {
+            let failing = next_failure(&mut parts)?;
+            let level = next_u8(&mut parts)?;
+            Ok(Reason::Confirmed { failing, level })
+        }
+        Some("escalated") => {
+            let failing = next_failure(&mut parts)?;
+            let level = next_u8(&mut parts)?;
+            Ok(Reason::Escalated { failing, level })
+        }
+        _ => Err(ParseError::BadField),
+    }
+}
+
+fn next_failure<'a>(parts: &mut impl Iterator<Item = &'a str>) -> Result<FailureClass, ParseError> {
+    parts
+        .next()
+        .and_then(parse_failure)
+        .ok_or(ParseError::BadField)
+}
+
+fn next_u8<'a>(parts: &mut impl Iterator<Item = &'a str>) -> Result<u8, ParseError> {
+    match parts.next() {
+        Some(s) => parse_u8(s),
+        None => Err(ParseError::BadField),
+    }
+}
+
+fn next_u64<'a>(parts: &mut impl Iterator<Item = &'a str>) -> Result<u64, ParseError> {
+    match parts.next() {
+        Some(s) => parse_u64(s),
+        None => Err(ParseError::BadField),
+    }
+}
+
+fn parse_proc(value: &str) -> Option<Proc> {
+    match value {
+        "running" => Some(Proc::Running),
+        "dead" => Some(Proc::Dead),
+        "unknown" => Some(Proc::Unknown),
+        _ => None,
+    }
+}
+
+fn parse_dns(value: &str) -> Option<Dns> {
+    match value {
+        "ok" => Some(Dns::Ok),
+        "failing" => Some(Dns::Failing),
+        "unknown" => Some(Dns::Unknown),
+        _ => None,
+    }
+}
+
+fn parse_verdict(value: &str) -> Option<NodeVerdict> {
+    match value {
+        "warming" => Some(NodeVerdict::Warming),
+        "healthy" => Some(NodeVerdict::Healthy),
+        "slow" => Some(NodeVerdict::Slow),
+        "throttled" => Some(NodeVerdict::Throttled),
+        "down" => Some(NodeVerdict::Down),
+        _ => None,
+    }
+}
+
+fn parse_failure(value: &str) -> Option<FailureClass> {
+    match value {
+        "none" => Some(FailureClass::None),
+        "wan_down" => Some(FailureClass::WanDown),
+        "singbox_dead" => Some(FailureClass::SingboxDead),
+        "node_dead" => Some(FailureClass::NodeDead),
+        "node_degraded" => Some(FailureClass::NodeDegraded),
+        "dns_fail" => Some(FailureClass::DnsFail),
+        _ => None,
+    }
+}
+
+fn parse_action(value: &str) -> Option<Action> {
+    match value {
+        "observe" => Some(Action::Observe),
+        "switch_node" => Some(Action::SwitchNode),
+        "restart_singbox" => Some(Action::RestartSingbox),
+        "bounce_wan" => Some(Action::BounceWan),
+        "failover_backup" => Some(Action::FailoverBackup),
+        "reboot" => Some(Action::Reboot),
+        _ => None,
+    }
+}
+
+fn parse_outcome(value: &str) -> Option<Outcome> {
+    match value {
+        "-" => Some(Outcome::NotActed),
+        "verified" => Some(Outcome::Verified),
+        "unverified" => Some(Outcome::Unverified),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{write_record, Outcome, Record};
+    use super::{parse_record, write_record, Outcome, ParseError, Record};
     use crate::domain::{Dns, LatencyMs, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES};
     use crate::failure::FailureClass;
     use crate::fleet::NodeVerdict;
@@ -265,5 +528,60 @@ mod tests {
         assert!(line.contains("action=restart_singbox"));
         assert!(line.contains("outcome=verified"));
         Ok(())
+    }
+
+    #[test]
+    fn round_trips_through_serialization() -> Result<(), ParseError> {
+        let mut cooldown = sample();
+        cooldown.telemetry.wan = Wan::Down;
+        cooldown.telemetry.tunnel = Tunnel::Degraded {
+            latency: LatencyMs(700),
+        };
+        cooldown.telemetry.dns = Dns::Failing;
+        cooldown.path_verdict = NodeVerdict::Throttled;
+        cooldown.failure = FailureClass::WanDown;
+        cooldown.state = State::Cooldown {
+            failing: FailureClass::WanDown,
+            level: 2,
+            until: Tick(99),
+        };
+        cooldown.reason = Reason::Escalated {
+            failing: FailureClass::WanDown,
+            level: 2,
+        };
+        cooldown.action = Action::FailoverBackup;
+        cooldown.outcome = Outcome::Unverified;
+
+        let mut suspect = sample();
+        suspect.probed = false;
+        suspect.telemetry.singbox = Proc::Dead;
+        suspect.telemetry.tunnel = Tunnel::Dead;
+        suspect.path_verdict = NodeVerdict::Down;
+        suspect.failure = FailureClass::SingboxDead;
+        suspect.state = State::Suspect {
+            failing: FailureClass::SingboxDead,
+            seen: 1,
+        };
+        suspect.reason = Reason::FirstSuspicion(FailureClass::SingboxDead);
+
+        for original in [sample(), cooldown, suspect] {
+            let mut line = String::new();
+            let _ = write_record(&mut line, &original); // writing to a String cannot fail
+            let parsed = parse_record(&line)?;
+            assert_eq!(parsed, original, "round-trip mismatch for: {line}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_malformed_lines() {
+        // A token with no '='.
+        assert_eq!(parse_record("total garbage"), Err(ParseError::BadField));
+        // An unrecognized key.
+        assert_eq!(parse_record("t=1 mystery=9"), Err(ParseError::UnknownKey));
+        // Required fields absent.
+        assert_eq!(parse_record("t=1 probed=1"), Err(ParseError::MissingField));
+        // A value that does not parse.
+        assert_eq!(parse_record("t=notanumber"), Err(ParseError::BadField));
     }
 }

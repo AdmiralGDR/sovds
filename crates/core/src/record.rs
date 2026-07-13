@@ -12,7 +12,9 @@
 //! on-device, a `String` in the file adapter). The record schema itself never
 //! touches I/O (the principle).
 
-use crate::domain::{Dns, LatencyMs, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES};
+use crate::domain::{
+    Dns, LatencyMs, NodeHealth, NodeId, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES,
+};
 use crate::failure::FailureClass;
 use crate::fleet::NodeVerdict;
 use crate::fsm::{Action, Reason, State};
@@ -65,6 +67,8 @@ pub fn write_record<W: Write>(w: &mut W, r: &Record) -> core::fmt::Result {
     write_tunnel(w, r.telemetry.tunnel)?;
     w.write_str(" dns=")?;
     w.write_str(dns_label(r.telemetry.dns))?;
+    w.write_str(" nodes=")?;
+    write_nodes(w, &r.telemetry.nodes)?;
     w.write_str(" verdict=")?;
     w.write_str(verdict_label(r.path_verdict))?;
     w.write_str(" class=")?;
@@ -85,6 +89,27 @@ fn write_wan<W: Write>(w: &mut W, wan: Wan) -> core::fmt::Result {
         Wan::Down => w.write_str("down"),
         Wan::Unknown => w.write_str("unknown"),
     }
+}
+
+/// Serialize the per-node latency table as `id:lat` entries (or `id:x` for a node
+/// that was not measured), comma-separated, in array order; `-` when the table is
+/// empty. Records are expected to fill the table sequentially, so this round-trips.
+fn write_nodes<W: Write>(w: &mut W, nodes: &[Option<NodeHealth>; MAX_NODES]) -> core::fmt::Result {
+    let mut any = false;
+    for node in nodes.iter().flatten() {
+        if any {
+            w.write_str(",")?;
+        }
+        any = true;
+        match node.latency {
+            Some(latency) => write!(w, "{}:{}", node.id.0, latency.0)?,
+            None => write!(w, "{}:x", node.id.0)?,
+        }
+    }
+    if !any {
+        w.write_str("-")?;
+    }
+    Ok(())
 }
 
 fn write_tunnel<W: Write>(w: &mut W, tunnel: Tunnel) -> core::fmt::Result {
@@ -226,6 +251,9 @@ pub fn parse_record(line: &str) -> Result<Record, ParseError> {
     let mut reason: Option<Reason> = None;
     let mut action: Option<Action> = None;
     let mut outcome: Option<Outcome> = None;
+    // Optional and backward-compatible: records written before per-node telemetry
+    // simply omit `nodes=`, and parse back with an empty table.
+    let mut nodes: [Option<NodeHealth>; MAX_NODES] = [None; MAX_NODES];
 
     for token in line.split_whitespace() {
         let (key, value) = token.split_once('=').ok_or(ParseError::BadField)?;
@@ -236,6 +264,7 @@ pub fn parse_record(line: &str) -> Result<Record, ParseError> {
             "sb" => singbox = Some(parse_proc(value).ok_or(ParseError::BadField)?),
             "tun" => tunnel = Some(parse_tunnel(value)?),
             "dns" => dns = Some(parse_dns(value).ok_or(ParseError::BadField)?),
+            "nodes" => nodes = parse_nodes(value)?,
             "verdict" => verdict = Some(parse_verdict(value).ok_or(ParseError::BadField)?),
             "class" => failure = Some(parse_failure(value).ok_or(ParseError::BadField)?),
             "state" => state = Some(parse_state(value)?),
@@ -254,7 +283,7 @@ pub fn parse_record(line: &str) -> Result<Record, ParseError> {
             singbox: singbox.ok_or(ParseError::MissingField)?,
             tunnel: tunnel.ok_or(ParseError::MissingField)?,
             dns: dns.ok_or(ParseError::MissingField)?,
-            nodes: [None; MAX_NODES],
+            nodes,
         },
         path_verdict: verdict.ok_or(ParseError::MissingField)?,
         failure: failure.ok_or(ParseError::MissingField)?,
@@ -449,10 +478,36 @@ fn parse_outcome(value: &str) -> Option<Outcome> {
     }
 }
 
+/// Parse the `nodes=` field (`id:lat` / `id:x`, comma-separated, or `-`) back into
+/// a bounded table, filled in the order given. Entries past [`MAX_NODES`] are
+/// dropped rather than failing (the principle: bounded, tolerant).
+fn parse_nodes(value: &str) -> Result<[Option<NodeHealth>; MAX_NODES], ParseError> {
+    let mut nodes: [Option<NodeHealth>; MAX_NODES] = [None; MAX_NODES];
+    if value == "-" {
+        return Ok(nodes);
+    }
+    let mut slot = 0usize;
+    for entry in value.split(',') {
+        let (id_str, lat_str) = entry.split_once(':').ok_or(ParseError::BadField)?;
+        let id = NodeId(parse_u8(id_str)?);
+        let latency = match lat_str {
+            "x" => None,
+            other => Some(LatencyMs(parse_u32(other)?)),
+        };
+        if let Some(cell) = nodes.get_mut(slot) {
+            *cell = Some(NodeHealth { id, latency });
+            slot = slot.saturating_add(1);
+        }
+    }
+    Ok(nodes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{parse_record, write_record, Outcome, ParseError, Record};
-    use crate::domain::{Dns, LatencyMs, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES};
+    use crate::domain::{
+        Dns, LatencyMs, NodeHealth, NodeId, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES,
+    };
     use crate::failure::FailureClass;
     use crate::fleet::NodeVerdict;
     use crate::fsm::{Action, Reason, State};
@@ -551,6 +606,21 @@ mod tests {
         };
         cooldown.action = Action::FailoverBackup;
         cooldown.outcome = Outcome::Unverified;
+        // Per-node table, filled sequentially like a real record.
+        let mut nodes = [None; MAX_NODES];
+        if let Some(cell) = nodes.get_mut(0) {
+            *cell = Some(NodeHealth {
+                id: NodeId(1),
+                latency: Some(LatencyMs(439)),
+            });
+        }
+        if let Some(cell) = nodes.get_mut(1) {
+            *cell = Some(NodeHealth {
+                id: NodeId(2),
+                latency: None,
+            });
+        }
+        cooldown.telemetry.nodes = nodes;
 
         let mut suspect = sample();
         suspect.probed = false;

@@ -34,6 +34,8 @@ fi
 if pidof sing-box >/dev/null 2>&1; then echo "singbox=running"; else echo "singbox=dead"; fi
 D=$(curl -s -m 8 -H "Authorization: Bearer $S" "http://192.168.1.1:9090/proxies/vless_out-out/delay?url=http://cp.cloudflare.com/generate_204&timeout=6000" 2>/dev/null | sed -n 's/.*"delay":\([0-9]*\).*/\1/p')
 if [ -n "$D" ]; then echo "tunnel=ok:$D"; else echo "tunnel=dead"; fi
+G=$(curl -s -m 8 -H "Authorization: Bearer $S" "http://192.168.1.1:9090/group/vless_out-out/delay?url=http://cp.cloudflare.com/generate_204&timeout=6000" 2>/dev/null)
+echo "$G" | tr ',{}' '\n' | sed -n 's/.*"vless_out-\([0-9][0-9]*\)-out": *\([0-9][0-9]*\).*/node=\1:\2/p'
 if nslookup youtube.com 127.0.0.1 2>/dev/null | grep -qE 'Address[0-9]*: *198\.1[89]\.'; then echo "dns=ok"; else echo "dns=failing"; fi
 "#;
 

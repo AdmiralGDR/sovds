@@ -30,6 +30,9 @@ pub struct AppConfig {
     pub log_max_bytes: u64,
     /// How many rotated record logs to keep.
     pub log_generations: u32,
+    /// Observe-only mode: run the brain and record, but never touch the router.
+    /// Safe by default (the principle: least privilege); actuation is opt-in.
+    pub dry_run: bool,
 }
 
 impl AppConfig {
@@ -62,6 +65,8 @@ impl AppConfig {
                 .map_or_else(|| PathBuf::from("sovereign-records.log"), PathBuf::from),
             log_max_bytes: parse_u64("SOVEREIGN_LOG_MAX_BYTES", 5_000_000),
             log_generations: parse_u32("SOVEREIGN_LOG_GENERATIONS", 5),
+            // Safe by default: only an explicit SOVEREIGN_ACTUATE=1 enables actions.
+            dry_run: var("SOVEREIGN_ACTUATE").is_none_or(|value| value != "1"),
         }
     }
 }

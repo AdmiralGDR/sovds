@@ -102,6 +102,35 @@ impl<R: CommandRunner> Actuator for SshActuator<'_, R> {
     }
 }
 
+/// An actuator that does nothing and structurally cannot touch the router.
+///
+/// This is observe-only (dry-run) operation: the decision core runs exactly as it
+/// would live and its intended actions are recorded, but no command is ever
+/// issued. Safety is guaranteed by construction, not by a flag — this type holds
+/// no transport, so it *cannot* act (the principle: least privilege). Each call reports
+/// success so the state machine advances as if the remedy had worked, making the
+/// trail a faithful "what the brain would have done" record.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NullActuator;
+
+impl Actuator for NullActuator {
+    fn switch_node(&self, _avoid: NodeId) -> Result<(), ActError> {
+        Ok(())
+    }
+    fn restart_singbox(&self) -> Result<(), ActError> {
+        Ok(())
+    }
+    fn bounce_wan(&self) -> Result<(), ActError> {
+        Ok(())
+    }
+    fn failover_backup(&self) -> Result<(), ActError> {
+        Ok(())
+    }
+    fn reboot(&self) -> Result<(), ActError> {
+        Ok(())
+    }
+}
+
 /// Map a transport failure onto the actuator's error vocabulary.
 fn map_run_err(err: RunError) -> ActError {
     match err {

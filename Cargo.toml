@@ -1,0 +1,26 @@
+[workspace]
+resolver = "2"
+members = ["crates/core"]
+
+# Quality gates as code (the internal engineering charter, the principle). These are not style preferences;
+# they are the physical encoding of the principle (no panics, bounded execution).
+# Under `cargo clippy -- -D warnings` every one of these becomes a hard error, so
+# code that can panic, silently unwrap, index out of bounds, or overflow simply
+# cannot enter the tree.
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+arithmetic_side_effects = "deny"
+
+# Release profile tuned for a small, predictable artifact. Not a hot path yet, so
+# nothing here is a blind micro-optimization (the principle): these only shrink the
+# binary and make behavior deterministic.
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+overflow-checks = true

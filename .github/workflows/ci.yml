@@ -1,0 +1,25 @@
+name: quality-gate
+
+# Zero-touch quality gates (the internal engineering charter, the principle). A commit that fails any of
+# these is, by definition, not working code — it cannot merge. Style is not up
+# for human debate; the pipeline decides.
+on:
+  push:
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The toolchain is pinned by rust-toolchain.toml, so every runner compiles
+      # with the exact same compiler (the principle: reproducible builds).
+      - name: Formatting is not negotiable
+        run: cargo fmt --all --check
+
+      - name: Warnings are errors
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Tests must pass
+        run: cargo test --all --locked

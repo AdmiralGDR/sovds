@@ -35,6 +35,11 @@ pub enum Outcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Record {
     pub tick: Tick,
+    /// Wall-clock time (Unix seconds) the record was produced. Injected by the app
+    /// — the core never reads a clock (the principle: agnostic core). `0` when unknown
+    /// (records written before timestamps existed). Unlike `tick`, this gives a
+    /// single global timeline across collector restarts.
+    pub wall_time: u64,
     /// Whether the router could be observed this cycle (`false` == ran degraded).
     pub probed: bool,
     /// The raw observation from the router, before adaptive refinement — the
@@ -58,6 +63,7 @@ pub struct Record {
 /// Propagates any error from the underlying sink `w`.
 pub fn write_record<W: Write>(w: &mut W, r: &Record) -> core::fmt::Result {
     write!(w, "t={}", r.tick.0)?;
+    write!(w, " ts={}", r.wall_time)?;
     write!(w, " probed={}", u8::from(r.probed))?;
     w.write_str(" wan=")?;
     write_wan(w, r.telemetry.wan)?;
@@ -254,11 +260,14 @@ pub fn parse_record(line: &str) -> Result<Record, ParseError> {
     // Optional and backward-compatible: records written before per-node telemetry
     // simply omit `nodes=`, and parse back with an empty table.
     let mut nodes: [Option<NodeHealth>; MAX_NODES] = [None; MAX_NODES];
+    // Optional too: records written before timestamps omit `ts=` and parse as 0.
+    let mut wall_time: u64 = 0;
 
     for token in line.split_whitespace() {
         let (key, value) = token.split_once('=').ok_or(ParseError::BadField)?;
         match key {
             "t" => tick = Some(Tick(parse_u64(value)?)),
+            "ts" => wall_time = parse_u64(value)?,
             "probed" => probed = Some(parse_bool(value)?),
             "wan" => wan = Some(parse_wan(value)?),
             "sb" => singbox = Some(parse_proc(value).ok_or(ParseError::BadField)?),
@@ -277,6 +286,7 @@ pub fn parse_record(line: &str) -> Result<Record, ParseError> {
 
     Ok(Record {
         tick: tick.ok_or(ParseError::MissingField)?,
+        wall_time,
         probed: probed.ok_or(ParseError::MissingField)?,
         telemetry: Telemetry {
             wan: wan.ok_or(ParseError::MissingField)?,
@@ -515,6 +525,7 @@ mod tests {
     fn sample() -> Record {
         Record {
             tick: Tick(42),
+            wall_time: 1_700_000_000,
             probed: true,
             telemetry: Telemetry {
                 wan: Wan::Up { uptime_s: 12345 },
@@ -541,6 +552,7 @@ mod tests {
         assert!(!line.contains('\n'), "a record must be exactly one line");
         for token in [
             "t=42",
+            "ts=1700000000",
             "probed=1",
             "wan=up:12345",
             "sb=running",

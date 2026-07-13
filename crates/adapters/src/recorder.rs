@@ -116,6 +116,7 @@ mod tests {
     fn record(tick: u64) -> Record {
         Record {
             tick: Tick(tick),
+            wall_time: 1_700_000_000_u64.saturating_add(tick),
             probed: true,
             telemetry: Telemetry {
                 wan: Wan::Up { uptime_s: 1 },

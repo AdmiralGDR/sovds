@@ -17,7 +17,7 @@ use sovereign_adapters::telemetry::SshTelemetry;
 use sovereign_core::ports::{Actuator, Notifier, TelemetrySource};
 use sovereign_core::record::{Outcome, Record};
 use std::process::ExitCode;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use supervisor::Supervisor;
 
 fn main() -> ExitCode {
@@ -96,11 +96,19 @@ fn supervise<T, A, N>(
             eprintln!("sovereign: record dropped ({err:?})");
         }
     };
-    let completed = supervisor.run(budget, interval, std::thread::sleep, observe);
+    let completed = supervisor.run(budget, interval, unix_now, std::thread::sleep, observe);
     eprintln!(
         "sovereign: completed {completed} cycle(s), final state {:?}",
         supervisor.state()
     );
+}
+
+/// Current wall-clock time as Unix seconds (0 if the clock is before the epoch,
+/// which cannot happen in practice). This is the only place a real clock is read.
+fn unix_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
 }
 
 /// Apply command-line overrides on top of the environment-derived config.

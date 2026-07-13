@@ -42,6 +42,11 @@ pub struct Summary {
     /// Number of collector runs in the corpus (each run restarts `tick` at 0), so
     /// the per-run logical clock is never misread as one global timeline.
     pub runs: usize,
+    /// Earliest / latest wall-clock stamp (Unix seconds) among timestamped
+    /// records; `0` when none carry a timestamp. Gives the real span the data
+    /// covers, across restarts.
+    pub first_ts: u64,
+    pub last_ts: u64,
     /// Fault-class counts, in a fixed order (the imbalance picture).
     pub failures: [(FailureClass, usize); 6],
     /// Action counts, in a fixed order.
@@ -60,6 +65,18 @@ pub fn summarize(records: &[Record]) -> Summary {
     // Each run starts at tick 0; counting those boundaries is meaningful across a
     // log that spans many restarts, unlike a raw min..max of the per-run clock.
     let runs = records.iter().filter(|r| r.tick.0 == 0).count();
+    let first_ts = records
+        .iter()
+        .map(|r| r.wall_time)
+        .filter(|&t| t > 0)
+        .min()
+        .unwrap_or(0);
+    let last_ts = records
+        .iter()
+        .map(|r| r.wall_time)
+        .filter(|&t| t > 0)
+        .max()
+        .unwrap_or(0);
 
     let failures = [
         FailureClass::None,
@@ -95,6 +112,8 @@ pub fn summarize(records: &[Record]) -> Summary {
         total,
         probed,
         runs,
+        first_ts,
+        last_ts,
         failures,
         actions,
         tunnel,
@@ -200,6 +219,22 @@ fn action_label(a: Action) -> &'static str {
     }
 }
 
+/// Human-readable duration from a span in seconds (e.g. `2d 3h 4m`).
+fn fmt_duration(seconds: u64) -> String {
+    let days = seconds.checked_div(86_400).unwrap_or(0);
+    let hours = seconds
+        .checked_div(3_600)
+        .unwrap_or(0)
+        .checked_rem(24)
+        .unwrap_or(0);
+    let mins = seconds
+        .checked_div(60)
+        .unwrap_or(0)
+        .checked_rem(60)
+        .unwrap_or(0);
+    format!("{days}d {hours}h {mins}m")
+}
+
 /// Percent of `part` in `whole`, rounded, as an integer 0..100.
 fn pct(part: usize, whole: usize) -> usize {
     if whole == 0 {
@@ -219,6 +254,15 @@ impl fmt::Display for Summary {
             pct(self.probed, self.total),
             self.runs,
         )?;
+        if self.last_ts > 0 {
+            writeln!(
+                f,
+                "collected: unix {}..{}  ({})",
+                self.first_ts,
+                self.last_ts,
+                fmt_duration(self.last_ts.saturating_sub(self.first_ts)),
+            )?;
+        }
 
         writeln!(f, "\nfault classes (imbalance):")?;
         for (kind, n) in self.failures {
@@ -288,6 +332,7 @@ mod tests {
     fn rec(tick: u64, tun_ms: u32, failure: FailureClass) -> Record {
         Record {
             tick: Tick(tick),
+            wall_time: 1_700_000_000_u64.saturating_add(tick),
             probed: true,
             telemetry: Telemetry {
                 wan: Wan::Up { uptime_s: 1 },

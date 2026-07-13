@@ -10,22 +10,12 @@
 
 use sovereign_core::domain::{Dns, NodeId, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES};
 use sovereign_core::error::ActError;
+use sovereign_core::failure::classify;
 use sovereign_core::fleet::{refine_tunnel, Fleet};
 use sovereign_core::fsm::{decide, Action, Config, Reason, State};
 use sovereign_core::ports::{Actuator, Notifier, TelemetrySource};
+use sovereign_core::record::{Outcome, Record};
 use std::time::Duration;
-
-/// What one supervision cycle did — returned for logging and for driving tests
-/// without inspecting private state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StepReport {
-    /// `false` when telemetry could not be sampled and the cycle ran degraded.
-    pub probed: bool,
-    pub action: Action,
-    pub reason: Reason,
-    /// `None` when the action was `Observe`; otherwise the actuator's verdict.
-    pub acted: Option<Result<(), ActError>>,
-}
 
 /// Ties the core state machine to its ports. Holds the only mutable state in the
 /// system, and holds it explicitly (the principle: no hidden globals).
@@ -60,10 +50,10 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
         self.state
     }
 
-    /// Run exactly one supervision cycle and report what happened.
-    pub fn step(&mut self) -> StepReport {
+    /// Run exactly one supervision cycle and return a full [`Record`] of it.
+    pub fn step(&mut self) -> Record {
         let now = Tick(self.tick);
-        let (mut telemetry, probed) = match self.telemetry.sample() {
+        let (observed, probed) = match self.telemetry.sample() {
             Ok(observation) => (observation, true),
             // Graceful degradation: an unobservable system is treated as all
             // Unknown, which classifies as "no fault" — so a probe outage can
@@ -76,19 +66,28 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
         // throttled or abnormally slow *for itself* is escalated to Degraded even
         // when its absolute latency is still under the static budget — this is the
         // intelligence the fixed threshold cannot provide.
-        let path_latency = match telemetry.tunnel {
-            Tunnel::Healthy { latency } => Some(latency),
-            Tunnel::Degraded { latency } => Some(latency),
+        let path_latency = match observed.tunnel {
+            Tunnel::Healthy { latency } | Tunnel::Degraded { latency } => Some(latency),
             Tunnel::Dead | Tunnel::Unknown => None,
         };
         let verdict = self.fleet.observe_path(path_latency);
-        self.fleet.observe_nodes(&telemetry.nodes);
-        telemetry.tunnel = refine_tunnel(telemetry.tunnel, verdict);
+        self.fleet.observe_nodes(&observed.nodes);
+        let refined = Telemetry {
+            tunnel: refine_tunnel(observed.tunnel, verdict),
+            ..observed
+        };
 
-        let transition = decide(self.state, &telemetry, &self.cfg, now);
+        // Same pure classification the decision uses — recorded so the trail shows
+        // exactly what the machine reasoned about.
+        let failure = classify(&refined, self.cfg.degraded_above);
+        let transition = decide(self.state, &refined, &self.cfg, now);
         self.state = transition.next;
 
-        let acted = self.apply(transition.action);
+        let outcome = match self.apply(transition.action) {
+            None => Outcome::NotActed,
+            Some(Ok(())) => Outcome::Verified,
+            Some(Err(_)) => Outcome::Unverified,
+        };
 
         if is_notable(transition.reason) {
             // A failed push is logged by the caller and otherwise ignored: the
@@ -97,11 +96,18 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
         }
 
         self.tick = self.tick.saturating_add(1);
-        StepReport {
+        // The record carries the *raw* observation (ground truth) plus the learned
+        // verdict, so a future model sees both the signal and the adaptive read.
+        Record {
+            tick: now,
             probed,
-            action: transition.action,
+            telemetry: observed,
+            path_verdict: verdict,
+            failure,
+            state: transition.next,
             reason: transition.reason,
-            acted,
+            action: transition.action,
+            outcome,
         }
     }
 
@@ -128,7 +134,7 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
     ) -> u64
     where
         S: Fn(Duration),
-        O: FnMut(&StepReport),
+        O: FnMut(&Record),
     {
         let mut completed: u64 = 0;
         loop {
@@ -179,6 +185,7 @@ mod tests {
     use sovereign_core::fsm::Reason;
     use sovereign_core::fsm::{Action, Config, State};
     use sovereign_core::ports::{Actuator, Notifier, TelemetrySource};
+    use sovereign_core::record::Outcome;
     use std::cell::Cell;
     use std::time::Duration;
 
@@ -294,7 +301,7 @@ mod tests {
         assert_eq!(r0.action, Action::Observe, "never act on first sight");
         let r1 = sup.step();
         assert_eq!(r1.action, Action::RestartSingbox);
-        assert_eq!(r1.acted, Some(Ok(())));
+        assert_eq!(r1.outcome, Outcome::Verified);
         let r2 = sup.step();
         assert_eq!(r2.action, Action::Observe, "cooldown holds");
         let r3 = sup.step();

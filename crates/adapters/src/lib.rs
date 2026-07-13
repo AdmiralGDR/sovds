@@ -14,5 +14,6 @@
 pub mod actuator;
 pub mod notify;
 pub mod os;
+pub mod recorder;
 pub mod ssh;
 pub mod telemetry;

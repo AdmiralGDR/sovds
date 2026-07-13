@@ -9,6 +9,7 @@ use sovereign_adapters::ssh::SshConfig;
 use sovereign_core::domain::LatencyMs;
 use sovereign_core::fsm::Config as CoreConfig;
 use std::env;
+use std::path::PathBuf;
 use std::time::Duration;
 
 /// Everything the composition root needs to build and run the supervisor.
@@ -23,6 +24,12 @@ pub struct AppConfig {
     pub interval: Duration,
     /// `None` runs forever (service mode); `Some(n)` stops after n cycles.
     pub budget: Option<u64>,
+    /// Where the audit/training records are appended.
+    pub log_path: PathBuf,
+    /// Rotate the record log once it reaches this size.
+    pub log_max_bytes: u64,
+    /// How many rotated record logs to keep.
+    pub log_generations: u32,
 }
 
 impl AppConfig {
@@ -51,6 +58,10 @@ impl AppConfig {
             },
             interval: Duration::from_secs(parse_u64("SOVEREIGN_INTERVAL_S", 30)),
             budget: var("SOVEREIGN_CYCLES").and_then(|s| s.parse::<u64>().ok()),
+            log_path: var("SOVEREIGN_LOG")
+                .map_or_else(|| PathBuf::from("sovereign-records.log"), PathBuf::from),
+            log_max_bytes: parse_u64("SOVEREIGN_LOG_MAX_BYTES", 5_000_000),
+            log_generations: parse_u32("SOVEREIGN_LOG_GENERATIONS", 5),
         }
     }
 }

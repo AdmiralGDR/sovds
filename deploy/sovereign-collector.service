@@ -1,0 +1,39 @@
+[Unit]
+Description=Sovereign router-brain data collector (observe-only)
+Documentation=file://~/sovereign/README.md
+
+[Service]
+Type=simple
+ExecStart=~/.local/bin/sovereign
+Restart=on-failure
+RestartSec=10
+
+# Observe-only: SOVEREIGN_ACTUATE is intentionally UNSET, so dry_run stays on and
+# the NullActuator is used — the router is never touched. Data is written to the
+# LAPTOP, never the router.
+Environment=SOVEREIGN_HOST=192.168.1.1
+Environment=SOVEREIGN_USER=root
+Environment=SOVEREIGN_ASKPASS=~/.local/share/sovereign/askpass.sh
+Environment=SOVEREIGN_SSH_CONNECT_S=8
+Environment=SOVEREIGN_TELEMETRY_S=15
+Environment=SOVEREIGN_INTERVAL_S=60
+Environment=SOVEREIGN_LOG=~/.local/share/sovereign/records.log
+Environment=SOVEREIGN_LOG_MAX_BYTES=20000000
+Environment=SOVEREIGN_LOG_GENERATIONS=10
+
+# Hardening — safe subset that does not break ssh/curl/network (user units are
+# only lightly sandboxable; these are the non-breaking, high-value directives).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=~/.local/share/sovereign
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+
+[Install]
+WantedBy=default.target

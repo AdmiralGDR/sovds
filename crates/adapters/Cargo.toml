@@ -1,0 +1,17 @@
+[package]
+name = "sovereign-adapters"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96.1"
+description = "I/O bridges that implement the sovereign-core ports over OS tools (ssh, curl)."
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+# Zero third-party dependencies (the internal engineering charter, the principle & I). The outside world is
+# reached only through the OS itself (std + the `ssh`/`curl` binaries), never
+# through a crate that could rot or be compromised.
+sovereign-core = { path = "../core" }
+
+[lints]
+workspace = true

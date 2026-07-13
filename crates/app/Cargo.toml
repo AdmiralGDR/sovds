@@ -1,0 +1,19 @@
+[package]
+name = "sovereign-app"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96.1"
+description = "Composition root: wires the sovereign core to its adapters and runs the bounded supervision loop."
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "sovereign"
+path = "src/main.rs"
+
+[dependencies]
+sovereign-core = { path = "../core" }
+sovereign-adapters = { path = "../adapters" }
+
+[lints]
+workspace = true

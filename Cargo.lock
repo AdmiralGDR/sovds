@@ -3,5 +3,20 @@
 version = 4
 
 [[package]]
+name = "sovereign-adapters"
+version = "0.1.0"
+dependencies = [
+ "sovereign-core",
+]
+
+[[package]]
+name = "sovereign-app"
+version = "0.1.0"
+dependencies = [
+ "sovereign-adapters",
+ "sovereign-core",
+]
+
+[[package]]
 name = "sovereign-core"
 version = "0.1.0"

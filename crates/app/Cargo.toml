@@ -15,6 +15,10 @@ path = "src/main.rs"
 name = "sovereign-inspect"
 path = "src/bin/inspect.rs"
 
+[[bin]]
+name = "sovereign-replay"
+path = "src/bin/replay.rs"
+
 [dependencies]
 sovereign-core = { path = "../core" }
 sovereign-adapters = { path = "../adapters" }

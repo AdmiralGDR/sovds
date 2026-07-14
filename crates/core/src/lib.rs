@@ -21,6 +21,7 @@ pub mod error;
 pub mod failure;
 pub mod fleet;
 pub mod fsm;
+pub mod pipeline;
 pub mod ports;
 pub mod record;
 pub mod stats;

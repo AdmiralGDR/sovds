@@ -57,7 +57,7 @@ fn main() -> ExitCode {
     // arms move `telemetry`/`notifier`, which is sound because only one runs.
     if cfg.dry_run {
         supervise(
-            Supervisor::new(telemetry, NullActuator, notifier, cfg.core),
+            Supervisor::new(telemetry, NullActuator, notifier, cfg.core, cfg.fleet),
             cfg.budget,
             cfg.interval,
             &recorder,
@@ -69,7 +69,7 @@ fn main() -> ExitCode {
             cfg.actuator_deadline,
         ));
         supervise(
-            Supervisor::new(telemetry, actuator, notifier, cfg.core),
+            Supervisor::new(telemetry, actuator, notifier, cfg.core, cfg.fleet),
             cfg.budget,
             cfg.interval,
             &recorder,

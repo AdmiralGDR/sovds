@@ -100,11 +100,11 @@ const fn ladder(class: FailureClass) -> &'static [Action] {
     match class {
         FailureClass::None => &[Action::Observe],
         FailureClass::NodeDegraded => &[Action::SwitchNode, Action::RestartSingbox],
-        FailureClass::NodeDead => &[
-            Action::SwitchNode,
-            Action::RestartSingbox,
-            Action::BounceWan,
-        ],
+        // A dead/unreachable node is a tunnel-layer problem: try another node,
+        // then restart the tunnel. Bouncing WAN for it is inappropriate (that is
+        // for an actual WAN failure) and was observed firing wrongly on transient
+        // probe timeouts, so it is deliberately excluded.
+        FailureClass::NodeDead => &[Action::SwitchNode, Action::RestartSingbox],
         FailureClass::SingboxDead => &[Action::RestartSingbox, Action::Reboot],
         FailureClass::DnsFail => &[Action::RestartSingbox, Action::Reboot],
         FailureClass::WanDown => &[Action::BounceWan, Action::FailoverBackup, Action::Reboot],

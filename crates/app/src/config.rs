@@ -7,6 +7,7 @@
 
 use sovereign_adapters::ssh::SshConfig;
 use sovereign_core::domain::LatencyMs;
+use sovereign_core::fleet::FleetConfig;
 use sovereign_core::fsm::Config as CoreConfig;
 use std::env;
 use std::path::PathBuf;
@@ -21,6 +22,8 @@ pub struct AppConfig {
     pub ntfy_topic: String,
     pub ntfy_timeout: Duration,
     pub core: CoreConfig,
+    /// Adaptive-layer parameters (tuned from real data by default).
+    pub fleet: FleetConfig,
     pub interval: Duration,
     /// `None` runs forever (service mode); `Some(n)` stops after n cycles.
     pub budget: Option<u64>,
@@ -56,8 +59,23 @@ impl AppConfig {
             ntfy_timeout: Duration::from_secs(parse_u64("SOVEREIGN_NTFY_S", 10)),
             core: CoreConfig {
                 degraded_above: LatencyMs(parse_u32("SOVEREIGN_DEGRADED_MS", 800)),
-                confirm_threshold: u8::try_from(parse_u64("SOVEREIGN_CONFIRM", 3)).unwrap_or(3),
+                // Default 5 (was 3), chosen by replaying 15h of real telemetry:
+                // it filters the transient node_dead probe-failure clusters that
+                // shorter hysteresis let through.
+                confirm_threshold: u8::try_from(parse_u64("SOVEREIGN_CONFIRM", 5)).unwrap_or(5),
                 cooldown_ticks: parse_u64("SOVEREIGN_COOLDOWN", 3),
+            },
+            fleet: {
+                let t = FleetConfig::tuned();
+                FleetConfig {
+                    weight: parse_u64("SOVEREIGN_FLEET_WEIGHT", t.weight),
+                    slack_ms: parse_u64("SOVEREIGN_FLEET_SLACK_MS", t.slack_ms),
+                    threshold_ms: parse_u64("SOVEREIGN_FLEET_THRESHOLD_MS", t.threshold_ms),
+                    warmup: parse_u32("SOVEREIGN_FLEET_WARMUP", t.warmup),
+                    miss_limit: parse_u32("SOVEREIGN_FLEET_MISS_LIMIT", t.miss_limit),
+                    slow_factor: parse_u64("SOVEREIGN_FLEET_SLOW_FACTOR", t.slow_factor),
+                    min_spread_ms: parse_u64("SOVEREIGN_FLEET_MIN_SPREAD_MS", t.min_spread_ms),
+                }
             },
             interval: Duration::from_secs(parse_u64("SOVEREIGN_INTERVAL_S", 30)),
             budget: var("SOVEREIGN_CYCLES").and_then(|s| s.parse::<u64>().ok()),

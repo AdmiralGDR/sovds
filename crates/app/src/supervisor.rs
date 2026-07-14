@@ -10,9 +10,9 @@
 
 use sovereign_core::domain::{Dns, NodeId, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES};
 use sovereign_core::error::ActError;
-use sovereign_core::failure::classify;
-use sovereign_core::fleet::{refine_tunnel, Fleet};
-use sovereign_core::fsm::{decide, Action, Config, Reason, State};
+use sovereign_core::fleet::{Fleet, FleetConfig};
+use sovereign_core::fsm::{Action, Config, Reason, State};
+use sovereign_core::pipeline::decide_cycle;
 use sovereign_core::ports::{Actuator, Notifier, TelemetrySource};
 use sovereign_core::record::{Outcome, Record};
 use std::time::Duration;
@@ -33,7 +33,13 @@ pub struct Supervisor<T, A, N> {
 
 impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
     #[must_use]
-    pub fn new(telemetry: T, actuator: A, notifier: N, cfg: Config) -> Self {
+    pub fn new(
+        telemetry: T,
+        actuator: A,
+        notifier: N,
+        cfg: Config,
+        fleet_cfg: FleetConfig,
+    ) -> Self {
         Self {
             telemetry,
             actuator,
@@ -41,7 +47,7 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
             cfg,
             state: State::Healthy,
             tick: 0,
-            fleet: Fleet::new(),
+            fleet: Fleet::new(fleet_cfg),
         }
     }
 
@@ -61,38 +67,21 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
             Err(_) => (all_unknown(), false),
         };
 
-        // Adaptive perception: feed the observation into the learned models, then
-        // let the path's own baseline refine the tunnel signal. A path that is
-        // throttled or abnormally slow *for itself* is escalated to Degraded even
-        // when its absolute latency is still under the static budget — this is the
-        // intelligence the fixed threshold cannot provide.
-        let path_latency = match observed.tunnel {
-            Tunnel::Healthy { latency } | Tunnel::Degraded { latency } => Some(latency),
-            Tunnel::Dead | Tunnel::Unknown => None,
-        };
-        let verdict = self.fleet.observe_path(path_latency);
-        self.fleet.observe_nodes(&observed.nodes);
-        let refined = Telemetry {
-            tunnel: refine_tunnel(observed.tunnel, verdict),
-            ..observed
-        };
+        // One cycle of pure decision logic (shared with the offline replay tool),
+        // advancing the adaptive models and returning the decision.
+        let cycle = decide_cycle(self.state, &mut self.fleet, &observed, &self.cfg, now);
+        self.state = cycle.next_state;
 
-        // Same pure classification the decision uses — recorded so the trail shows
-        // exactly what the machine reasoned about.
-        let failure = classify(&refined, self.cfg.degraded_above);
-        let transition = decide(self.state, &refined, &self.cfg, now);
-        self.state = transition.next;
-
-        let outcome = match self.apply(transition.action) {
+        let outcome = match self.apply(cycle.action) {
             None => Outcome::NotActed,
             Some(Ok(())) => Outcome::Verified,
             Some(Err(_)) => Outcome::Unverified,
         };
 
-        if is_notable(transition.reason) {
+        if is_notable(cycle.reason) {
             // A failed push is logged by the caller and otherwise ignored: the
             // notifier is a courtesy and must never disturb the core (the principle).
-            let _ = self.notifier.notify(transition.reason);
+            let _ = self.notifier.notify(cycle.reason);
         }
 
         self.tick = self.tick.saturating_add(1);
@@ -103,11 +92,11 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
             wall_time: now_unix,
             probed,
             telemetry: observed,
-            path_verdict: verdict,
-            failure,
-            state: transition.next,
-            reason: transition.reason,
-            action: transition.action,
+            path_verdict: cycle.verdict,
+            failure: cycle.failure,
+            state: cycle.next_state,
+            reason: cycle.reason,
+            action: cycle.action,
             outcome,
         }
     }
@@ -185,6 +174,7 @@ mod tests {
     use sovereign_core::domain::NodeId;
     use sovereign_core::domain::{Dns, LatencyMs, Proc, Telemetry, Tunnel, Wan, MAX_NODES};
     use sovereign_core::error::{ActError, ProbeError};
+    use sovereign_core::fleet::FleetConfig;
     use sovereign_core::fsm::Reason;
     use sovereign_core::fsm::{Action, Config, State};
     use sovereign_core::ports::{Actuator, Notifier, TelemetrySource};
@@ -298,6 +288,7 @@ mod tests {
             RecordingActuator::default(),
             CountingNotifier::default(),
             cfg(),
+            FleetConfig::legacy(),
         );
 
         let r0 = sup.step(0);
@@ -330,6 +321,7 @@ mod tests {
             RecordingActuator::default(),
             CountingNotifier::default(),
             cfg(),
+            FleetConfig::legacy(),
         );
 
         let mut switched = false;
@@ -355,6 +347,7 @@ mod tests {
             RecordingActuator::default(),
             CountingNotifier::default(),
             cfg(),
+            FleetConfig::legacy(),
         );
         let r = sup.step(0);
         assert!(!r.probed);
@@ -373,6 +366,7 @@ mod tests {
             RecordingActuator::default(),
             CountingNotifier::default(),
             cfg(),
+            FleetConfig::legacy(),
         );
         let sleeps = Cell::new(0u32);
         let completed = sup.run(

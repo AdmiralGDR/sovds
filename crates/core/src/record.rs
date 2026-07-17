@@ -31,6 +31,18 @@ pub enum Outcome {
     Unverified,
 }
 
+/// Where a record came from. The dataset must distinguish observations made by
+/// the live brain from ones recovered later out of the router's fallback buffer:
+/// backfilled decisions were never actuated, and analysis/training may weigh the
+/// two differently (the principle: the data carries its own provenance).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Source {
+    /// Produced by the live supervision loop as it ran.
+    Live,
+    /// Recovered from the router's RAM buffer after the fact (laptop was off).
+    Backfill,
+}
+
 /// A complete record of one supervision cycle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Record {
@@ -54,6 +66,8 @@ pub struct Record {
     pub reason: Reason,
     pub action: Action,
     pub outcome: Outcome,
+    /// Provenance of this record (live loop vs. recovered from the buffer).
+    pub source: Source,
 }
 
 /// Serialize a record as one self-describing line (no trailing newline). The
@@ -86,7 +100,9 @@ pub fn write_record<W: Write>(w: &mut W, r: &Record) -> core::fmt::Result {
     w.write_str(" action=")?;
     w.write_str(action_label(r.action))?;
     w.write_str(" outcome=")?;
-    w.write_str(outcome_label(r.outcome))
+    w.write_str(outcome_label(r.outcome))?;
+    w.write_str(" src=")?;
+    w.write_str(source_label(r.source))
 }
 
 fn write_wan<W: Write>(w: &mut W, wan: Wan) -> core::fmt::Result {
@@ -224,6 +240,13 @@ const fn outcome_label(o: Outcome) -> &'static str {
     }
 }
 
+const fn source_label(s: Source) -> &'static str {
+    match s {
+        Source::Live => "live",
+        Source::Backfill => "backfill",
+    }
+}
+
 /// Why a serialized record line could not be parsed back. The offending line is
 /// the caller's context (the principle): kind plus line is enough to reproduce.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -262,6 +285,8 @@ pub fn parse_record(line: &str) -> Result<Record, ParseError> {
     let mut nodes: [Option<NodeHealth>; MAX_NODES] = [None; MAX_NODES];
     // Optional too: records written before timestamps omit `ts=` and parse as 0.
     let mut wall_time: u64 = 0;
+    // Optional: records written before provenance existed default to Live.
+    let mut source = Source::Live;
 
     for token in line.split_whitespace() {
         let (key, value) = token.split_once('=').ok_or(ParseError::BadField)?;
@@ -280,6 +305,7 @@ pub fn parse_record(line: &str) -> Result<Record, ParseError> {
             "reason" => reason = Some(parse_reason(value)?),
             "action" => action = Some(parse_action(value).ok_or(ParseError::BadField)?),
             "outcome" => outcome = Some(parse_outcome(value).ok_or(ParseError::BadField)?),
+            "src" => source = parse_source(value).ok_or(ParseError::BadField)?,
             _ => return Err(ParseError::UnknownKey),
         }
     }
@@ -301,6 +327,7 @@ pub fn parse_record(line: &str) -> Result<Record, ParseError> {
         reason: reason.ok_or(ParseError::MissingField)?,
         action: action.ok_or(ParseError::MissingField)?,
         outcome: outcome.ok_or(ParseError::MissingField)?,
+        source,
     })
 }
 
@@ -488,6 +515,14 @@ fn parse_outcome(value: &str) -> Option<Outcome> {
     }
 }
 
+fn parse_source(value: &str) -> Option<Source> {
+    match value {
+        "live" => Some(Source::Live),
+        "backfill" => Some(Source::Backfill),
+        _ => None,
+    }
+}
+
 /// Parse the `nodes=` field (`id:lat` / `id:x`, comma-separated, or `-`) back into
 /// a bounded table, filled in the order given. Entries past [`MAX_NODES`] are
 /// dropped rather than failing (the principle: bounded, tolerant).
@@ -514,7 +549,7 @@ fn parse_nodes(value: &str) -> Result<[Option<NodeHealth>; MAX_NODES], ParseErro
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_record, write_record, Outcome, ParseError, Record};
+    use super::{parse_record, write_record, Outcome, ParseError, Record, Source};
     use crate::domain::{
         Dns, LatencyMs, NodeHealth, NodeId, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES,
     };
@@ -542,6 +577,7 @@ mod tests {
             reason: Reason::Nominal,
             action: Action::Observe,
             outcome: Outcome::NotActed,
+            source: Source::Live,
         }
     }
 
@@ -645,6 +681,8 @@ mod tests {
             seen: 1,
         };
         suspect.reason = Reason::FirstSuspicion(FailureClass::SingboxDead);
+        // Provenance must round-trip too.
+        suspect.source = Source::Backfill;
 
         for original in [sample(), cooldown, suspect] {
             let mut line = String::new();
@@ -665,5 +703,21 @@ mod tests {
         assert_eq!(parse_record("t=1 probed=1"), Err(ParseError::MissingField));
         // A value that does not parse.
         assert_eq!(parse_record("t=notanumber"), Err(ParseError::BadField));
+        // A bad provenance value.
+        assert_eq!(
+            parse_record("t=1 src=teleported"),
+            Err(ParseError::BadField)
+        );
+    }
+
+    #[test]
+    fn records_without_src_parse_as_live() -> Result<(), ParseError> {
+        // Backward compatibility: pre-provenance records omit `src=`.
+        let mut line = String::new();
+        let _ = write_record(&mut line, &sample());
+        let stripped = line.replace(" src=live", "");
+        let parsed = parse_record(&stripped)?;
+        assert_eq!(parsed.source, Source::Live);
+        Ok(())
     }
 }

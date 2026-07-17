@@ -1,0 +1,11 @@
+[Unit]
+Description=Run sovereign-backfill shortly after boot and every 15 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+# Catch up promptly after suspend/resume as well.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

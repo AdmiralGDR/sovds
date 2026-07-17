@@ -19,6 +19,10 @@ path = "src/bin/inspect.rs"
 name = "sovereign-replay"
 path = "src/bin/replay.rs"
 
+[[bin]]
+name = "sovereign-backfill"
+path = "src/bin/backfill.rs"
+
 [dependencies]
 sovereign-core = { path = "../core" }
 sovereign-adapters = { path = "../adapters" }

@@ -327,7 +327,7 @@ mod tests {
     use sovereign_core::failure::FailureClass;
     use sovereign_core::fleet::NodeVerdict;
     use sovereign_core::fsm::{Action, Reason, State};
-    use sovereign_core::record::{Outcome, Record};
+    use sovereign_core::record::{Outcome, Record, Source};
 
     fn rec(tick: u64, tun_ms: u32, failure: FailureClass) -> Record {
         Record {
@@ -349,6 +349,7 @@ mod tests {
             reason: Reason::Nominal,
             action: Action::Observe,
             outcome: Outcome::NotActed,
+            source: Source::Live,
         }
     }
 

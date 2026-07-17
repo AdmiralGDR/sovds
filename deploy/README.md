@@ -49,3 +49,24 @@ loginctl enable-linger "$USER"   # keep collecting across logout/reboot
 tail -f ~/.local/share/sovereign/records.log
 journalctl --user -u sovereign-collector.service -f
 ```
+
+## Fallback: router-side telemetry buffer (laptop off / asleep)
+
+The dataset must not go blind when the laptop is away (a real 74.8 h gap
+motivated this). Two halves:
+
+- **`deploy/router/sovereign-probe`** — busybox script on the router (cron,
+  1/min): samples the same telemetry contract into `/tmp/sovereign-buffer.log`
+  (tmpfs = RAM only, ring-bounded at 4320 lines ≈ 3 days; router flash and the
+  user's "data lives on the laptop" rule are respected).
+- **`sovereign-backfill`** (+ `sovereign-backfill.{service,timer}`, every 15 min
+  and 2 min after boot): drains the buffer loss-free (leftover `.drain` is folded
+  in; remote delete only after local append), validates each line through the
+  same parser as live telemetry, dedupes against the on-disk dataset (±45 s), and
+  replays survivors through the same decision pipeline. Records carry
+  `src=backfill` so analysis can distinguish provenance; nothing is actuated
+  (`outcome=-`).
+
+Install (router): copy `deploy/router/sovereign-probe` to `/usr/bin/`, add cron
+`* * * * * /usr/bin/sovereign-probe`. Install (laptop): the two units above,
+then `systemctl --user enable --now sovereign-backfill.timer`.

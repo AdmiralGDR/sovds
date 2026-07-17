@@ -79,14 +79,25 @@ impl AppConfig {
             },
             interval: Duration::from_secs(parse_u64("SOVEREIGN_INTERVAL_S", 30)),
             budget: var("SOVEREIGN_CYCLES").and_then(|s| s.parse::<u64>().ok()),
-            log_path: var("SOVEREIGN_LOG")
-                .map_or_else(|| PathBuf::from("sovereign-records.log"), PathBuf::from),
+            // Default matches sovereign-inspect/-replay: one XDG location, never
+            // a cwd-relative path (a relative default once sent backfilled
+            // records into a stray file the other tools could not see).
+            log_path: var("SOVEREIGN_LOG").map_or_else(default_log_path, PathBuf::from),
             log_max_bytes: parse_u64("SOVEREIGN_LOG_MAX_BYTES", 5_000_000),
             log_generations: parse_u32("SOVEREIGN_LOG_GENERATIONS", 5),
             // Safe by default: only an explicit SOVEREIGN_ACTUATE=1 enables actions.
             dry_run: var("SOVEREIGN_ACTUATE").is_none_or(|value| value != "1"),
         }
     }
+}
+
+/// The canonical dataset location on the laptop (XDG data dir), shared as the
+/// default by every binary.
+fn default_log_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let mut path = PathBuf::from(home);
+    path.push(".local/share/sovereign/records.log");
+    path
 }
 
 /// A non-empty environment variable, or `None`.

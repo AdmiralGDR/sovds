@@ -14,7 +14,7 @@ use sovereign_core::fleet::{Fleet, FleetConfig};
 use sovereign_core::fsm::{Action, Config, Reason, State};
 use sovereign_core::pipeline::decide_cycle;
 use sovereign_core::ports::{Actuator, Notifier, TelemetrySource};
-use sovereign_core::record::{Outcome, Record};
+use sovereign_core::record::{Outcome, Record, Source};
 use std::time::Duration;
 
 /// Ties the core state machine to its ports. Holds the only mutable state in the
@@ -98,6 +98,7 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
             reason: cycle.reason,
             action: cycle.action,
             outcome,
+            source: Source::Live,
         }
     }
 

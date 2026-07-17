@@ -65,7 +65,7 @@ mod tests {
     use sovereign_core::failure::FailureClass;
     use sovereign_core::fleet::NodeVerdict;
     use sovereign_core::fsm::{Action, Reason, State};
-    use sovereign_core::record::{Outcome, Record};
+    use sovereign_core::record::{Outcome, Record, Source};
     use std::path::PathBuf;
 
     fn record(tick: u64) -> Record {
@@ -88,6 +88,7 @@ mod tests {
             reason: Reason::Nominal,
             action: Action::Observe,
             outcome: Outcome::NotActed,
+            source: Source::Live,
         }
     }
 

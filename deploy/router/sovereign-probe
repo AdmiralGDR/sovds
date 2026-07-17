@@ -1,0 +1,60 @@
+#!/bin/sh
+# sovereign-probe — bounded RAM telemetry buffer on the router.
+#
+# The brain (laptop) is the system of record for the dataset, but it can be off
+# or asleep. This probe samples the SAME telemetry contract the brain collects,
+# once a minute via cron, into a strictly bounded ring buffer in /tmp (tmpfs =
+# RAM only; router flash is never touched — the durable dataset lives on the
+# laptop, which drains this buffer via sovereign-backfill).
+#
+# the internal engineering charter discipline, within busybox limits:
+#   * Bounded: every network call has a hard timeout; the buffer is capped at
+#     MAX_LINES (~3 days at 1/min, <1 MB of RAM) — oldest lines are dropped.
+#   * Graceful: a failed sub-probe reports its own token (tunnel=dead etc.);
+#     nothing here can fail loudly or hang the cron slot.
+#   * One line per sample, self-describing `key=value` tokens — the exact
+#     snapshot contract the brain's parser already validates.
+
+BUF=/tmp/sovereign-buffer.log
+MAX_LINES=4320
+
+S=$(uci -q get podkop.settings.yacd_secret_key)
+ts=$(date +%s)
+
+if ubus call network.interface.wan status 2>/dev/null | grep -q '"up": true'; then
+    U=$(ubus call network.interface.wan status 2>/dev/null \
+        | sed -n 's/.*"uptime": \([0-9]*\).*/\1/p' | head -1)
+    wan="wan=up:${U:-0}"
+else
+    wan="wan=down"
+fi
+
+if pidof sing-box >/dev/null 2>&1; then sb="singbox=running"; else sb="singbox=dead"; fi
+
+D=$(curl -s -m 8 -H "Authorization: Bearer $S" \
+    "http://192.168.1.1:9090/proxies/vless_out-out/delay?url=http://cp.cloudflare.com/generate_204&timeout=6000" \
+    2>/dev/null | sed -n 's/.*"delay":\([0-9]*\).*/\1/p')
+if [ -n "$D" ]; then tun="tunnel=ok:$D"; else tun="tunnel=dead"; fi
+
+G=$(curl -s -m 8 -H "Authorization: Bearer $S" \
+    "http://192.168.1.1:9090/group/vless_out-out/delay?url=http://cp.cloudflare.com/generate_204&timeout=6000" \
+    2>/dev/null)
+nodes=$(echo "$G" | tr ',{}' '\n' \
+    | sed -n 's/.*"vless_out-\([0-9][0-9]*\)-out": *\([0-9][0-9]*\).*/node=\1:\2/p' \
+    | tr '\n' ' ')
+
+if nslookup youtube.com 127.0.0.1 2>/dev/null | grep -qE 'Address[0-9]*: *198\.1[89]\.'; then
+    dns="dns=ok"
+else
+    dns="dns=failing"
+fi
+
+echo "ts=$ts $wan $sb $tun $dns $nodes" >> "$BUF"
+
+# Ring bound: keep only the newest MAX_LINES (atomic swap; a failed swap leaves
+# the old buffer intact rather than truncating it).
+lines=$(wc -l < "$BUF" 2>/dev/null || echo 0)
+if [ "$lines" -gt "$MAX_LINES" ]; then
+    tail -n "$MAX_LINES" "$BUF" > "$BUF.new" 2>/dev/null && mv "$BUF.new" "$BUF"
+fi
+exit 0

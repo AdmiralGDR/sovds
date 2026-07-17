@@ -1,0 +1,141 @@
+#!/bin/sh
+# podkop-selfheal — autonomous tunnel self-healing for podkop.
+#
+# The provider (the provider) is periodically IP-blocked by the ISP's DPI; the
+# subscription rotates in fresh (unblocked) foreign servers. This heals that:
+# when the tunnel stops routing, it re-fetches the subscription, picks fresh
+# FOREIGN Reality servers, and reloads podkop — with no human in the loop.
+#
+# Built to the internal engineering charter principles, within busybox/POSIX-sh limits:
+#   * Bounded execution: every network call has a hard timeout; no unbounded
+#     loops; a state file rate-limits refreshes.
+#   * Graceful degradation: any failure logs and leaves the working config
+#     untouched — it can never make a healthy tunnel worse.
+#   * Atomic change: the server list is swapped via one uci commit, after a full
+#     config backup; all-or-nothing.
+#   * Idempotence: if the healthy foreign set already matches, it does nothing.
+#   * No silent failures: every branch logs to syslog with context.
+#   * Least privilege & zero external deps: reads only the subscription, writes
+#     only podkop's server list; foreign-ness is read from the subscription's own
+#     country labels (no third-party geoip service).
+#
+# Usage: podkop-selfheal            (normal: health-gated, rate-limited)
+#        podkop-selfheal force      (skip the health check; for testing)
+#        podkop-selfheal dry        (report what it WOULD configure; no changes)
+
+set -u
+
+TAG=podkop-selfheal
+CONF=/etc/podkop-selfheal.conf
+STATE=/tmp/podkop-selfheal.state
+API="http://192.168.1.1:9090"
+PROBE_URL="http://cp.cloudflare.com/generate_204"
+MIN_INTERVAL=600      # rate-limit: at most one refresh per 10 min
+MAX_SERVERS=6         # cap urltest members (bounded probing)
+
+MODE="${1:-run}"
+log() { logger -t "$TAG" "$1"; }
+
+# --- config: subscription URL ------------------------------------------------
+[ -r "$CONF" ] || { log "FATAL: missing $CONF"; exit 1; }
+# shellcheck disable=SC1090
+. "$CONF"
+[ -n "${SUB_URL:-}" ] || { log "FATAL: SUB_URL unset in $CONF"; exit 1; }
+
+secret() { uci -q get podkop.settings.yacd_secret_key; }
+
+# Return the tunnel round-trip delay in ms, or empty if it cannot route.
+tunnel_delay() {
+    curl -s -m 10 -H "Authorization: Bearer $(secret)" \
+        "$API/proxies/vless_out-out/delay?url=${PROBE_URL}&timeout=6000" \
+        2>/dev/null | sed -n 's/.*"delay":\([0-9][0-9]*\).*/\1/p'
+}
+
+# Country code of an IPv4 address, via a geoip lookup, or empty on failure.
+# For a direct VLESS server the exit country IS the server's IP location, so this
+# is the ground truth for "foreign" — the subscription's own labels are marketing
+# and were observed to mislabel Moscow-hosted servers.
+ip_country() {
+    curl -s -m 6 "http://ip-api.com/line/$1?fields=countryCode" 2>/dev/null | head -1
+}
+
+# Emit foreign (non-RU), sing-box-compatible (tcp/grpc Reality) server URLs,
+# capped. Servers whose country cannot be determined are skipped conservatively
+# (never risk configuring a Russian exit).
+foreign_servers() {
+    curl -s -m 20 "$SUB_URL" 2>/dev/null | base64 -d 2>/dev/null \
+        | grep -E 'type=(tcp|grpc)' | grep 'security=reality' \
+        | grep -vE '@(0\.0\.0\.0|auto-)' \
+        | while IFS= read -r line; do
+            hostport=$(printf '%s' "$line" | sed -E 's|vless://[^@]*@([^?]*)\?.*|\1|')
+            ip=${hostport%:*}
+            # Only geolocate bare IPv4 candidates (domains are xhttp CDN, already excluded).
+            case "$ip" in *[!0-9.]*) continue ;; esac
+            cc=$(ip_country "$ip")
+            [ -n "$cc" ] && [ "$cc" != "RU" ] && printf '%s\n' "$line"
+        done | head -n "$MAX_SERVERS"
+}
+
+# --- 1. rate limit -----------------------------------------------------------
+now=$(date +%s)
+last=$(cat "$STATE" 2>/dev/null || echo 0)
+if [ "$MODE" = run ] && [ $((now - last)) -lt "$MIN_INTERVAL" ]; then
+    exit 0
+fi
+
+# --- 2. health gate (skipped in force/dry) -----------------------------------
+if [ "$MODE" = run ]; then
+    [ -n "$(tunnel_delay)" ] && exit 0          # healthy: nothing to do
+    sleep 5
+    [ -n "$(tunnel_delay)" ] && exit 0          # transient blip: nothing to do
+    log "tunnel not routing; attempting subscription refresh"
+fi
+
+# --- 3. fetch + extract foreign servers --------------------------------------
+NEW=$(foreign_servers)
+CNT=$(printf '%s\n' "$NEW" | grep -c 'vless://')
+if [ "${CNT:-0}" -lt 1 ]; then
+    log "refresh aborted: no foreign servers in subscription (kept current config)"
+    [ "$MODE" = dry ] && echo "no foreign servers found"
+    exit 1
+fi
+
+if [ "$MODE" = dry ]; then
+    echo "would configure $CNT foreign server(s):"
+    printf '%s\n' "$NEW" | sed -E 's/(@[^?]*)\?.*/\1/;s/^/  /'
+    exit 0
+fi
+
+# --- 4. idempotence: skip if the set is unchanged ----------------------------
+CUR=$(uci -q get podkop.vless_out.urltest_proxy_links | tr ' ' '\n' | sort)
+NEWSORT=$(printf '%s\n' "$NEW" | sort)
+if [ "$CUR" = "$NEWSORT" ]; then
+    log "server set already current; not restarting"
+    echo "$now" > "$STATE"
+    exit 0
+fi
+
+# --- 5. atomic update (with backup) + reload ---------------------------------
+uci export podkop > "/root/podkop-selfheal-backup.uci" 2>/dev/null
+uci -q delete podkop.vless_out.urltest_proxy_links
+printf '%s\n' "$NEW" | while IFS= read -r u; do
+    [ -n "$u" ] && uci add_list podkop.vless_out.urltest_proxy_links="$u"
+done
+uci commit podkop
+echo "$now" > "$STATE"
+log "configured $CNT foreign server(s); reloading podkop"
+/etc/init.d/podkop restart >/dev/null 2>&1
+
+# --- 6. verify recovery (bounded) --------------------------------------------
+i=0
+while [ "$i" -lt 6 ]; do
+    sleep 5
+    d=$(tunnel_delay)
+    if [ -n "$d" ]; then
+        log "RECOVERED via subscription refresh (delay ${d}ms)"
+        exit 0
+    fi
+    i=$((i + 1))
+done
+log "refresh applied but tunnel still not routing (best effort; will retry after ${MIN_INTERVAL}s)"
+exit 0

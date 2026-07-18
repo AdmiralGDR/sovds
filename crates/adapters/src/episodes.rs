@@ -8,7 +8,7 @@
 //! the right thing). A healthy system rarely fails, so the rare classes converge
 //! in episodes agonisingly slowly; this is the instrument that says how slowly.
 
-use sovereign_core::episode::{Episode, EpisodeEnd, SegConfig, Segmenter};
+use sovereign_core::episode::{Episode, SegConfig, Segmenter};
 use sovereign_core::failure::FailureClass;
 use sovereign_core::record::Record;
 
@@ -62,37 +62,60 @@ pub fn summarize(episodes: &[Episode]) -> Vec<ClassEpisodes> {
     .collect()
 }
 
-/// Rollback-safety tally for an autonomous fault injector: of the episodes we
-/// induced on purpose, how many cleanly auto-recovered vs. stayed stuck? A `stuck`
-/// count above zero means an injection did not revert within the data — the one
-/// thing an unattended disruptor must never do (the principle/III: bounded, self-heal).
+/// Rollback-safety tally for an autonomous fault injector: for each *injection
+/// window* (a contiguous run of `inject=`-labelled records), did the system return
+/// to health afterwards? A `stuck` count above zero means an injection did not
+/// revert — the one thing an unattended disruptor must never do (the principle/III:
+/// bounded, self-heal).
+///
+/// This is measured over records, at the **window** level, not per fault episode —
+/// so a class transition inside one window (e.g. `dns_fail` → `singbox_dead` as a
+/// tunnel drops) is one injection, not two, and is not mistaken for a failed
+/// rollback. Right-censoring is honoured: a window at the very tail of the corpus,
+/// whose recovery simply has not been observed yet, is `pending`, never `stuck`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct InjectionSafety {
-    /// Episodes flagged as a deliberate injection.
-    pub injected_episodes: usize,
-    /// Of those, episodes that ended by recovery (the tunnel came back).
+    /// Distinct injection windows seen.
+    pub windows: usize,
+    /// Windows followed by a healthy (`class=none`) record — a confirmed recovery.
     pub recovered: usize,
-    /// Injected episodes that did NOT end in recovery (still ongoing / cut) —
-    /// candidates for a failed rollback; worth an operator's eyes.
+    /// Windows followed only by faulty records — a rollback that did NOT take.
     pub stuck: usize,
+    /// Windows at the corpus tail with no following record yet — recovery not yet
+    /// observable (not a failure).
+    pub pending: usize,
 }
 
-/// Tally injection rollback safety across the episode set.
+/// Tally injection rollback safety over a chronological record slice.
 #[must_use]
-pub fn injection_safety(episodes: &[Episode]) -> InjectionSafety {
-    let mut injected_episodes = 0usize;
-    let mut recovered = 0usize;
-    for ep in episodes.iter().filter(|e| e.injected.is_some()) {
-        injected_episodes = injected_episodes.saturating_add(1);
-        if matches!(ep.end, EpisodeEnd::Recovered) {
-            recovered = recovered.saturating_add(1);
+pub fn injection_safety(records: &[Record]) -> InjectionSafety {
+    let mut s = InjectionSafety::default();
+    let mut i = 0usize;
+    while let Some(rec) = records.get(i) {
+        if rec.label.is_none() {
+            i = i.saturating_add(1);
+            continue;
         }
+        // Advance to the end of this contiguous injection window.
+        let mut j = i;
+        while records.get(j).is_some_and(|r| r.label.is_some()) {
+            j = j.saturating_add(1);
+        }
+        s.windows = s.windows.saturating_add(1);
+        let tail = records.get(j..).unwrap_or(&[]);
+        if tail.is_empty() {
+            // Window is right-censored: recovery cannot be observed yet.
+            s.pending = s.pending.saturating_add(1);
+        } else if tail.iter().any(|r| r.failure == FailureClass::None) {
+            // The system was seen healthy again after the window: recovered.
+            s.recovered = s.recovered.saturating_add(1);
+        } else {
+            // Records follow but the system never returned to health: stuck.
+            s.stuck = s.stuck.saturating_add(1);
+        }
+        i = j;
     }
-    InjectionSafety {
-        injected_episodes,
-        recovered,
-        stuck: injected_episodes.saturating_sub(recovered),
-    }
+    s
 }
 
 /// Detection scorecard for deliberately injected faults: over records carrying a
@@ -276,28 +299,30 @@ mod tests {
     }
 
     #[test]
-    fn injection_safety_flags_a_stuck_rollback() {
+    fn injection_safety_distinguishes_recovered_stuck_and_pending() {
         use super::injection_safety;
-        // One injected singbox_dead episode that recovered, and one that stayed
-        // ongoing (the collector ended before the tunnel came back = a rollback we
-        // could not confirm).
-        let mut recovered = Vec::new();
-        recovered.push(rec(0, 100, FailureClass::None));
-        let mut f1 = rec(1, 160, FailureClass::SingboxDead);
-        f1.label = Some(FailureClass::SingboxDead);
-        recovered.push(f1);
-        for t in 2..10 {
-            recovered.push(rec(t, 100 + t * 60, FailureClass::None)); // clear recovery
-        }
-        // Second injection at the very end -> never observed recovering.
-        let mut f2 = rec(10, 100 + 10 * 60, FailureClass::SingboxDead);
-        f2.label = Some(FailureClass::SingboxDead);
-        recovered.push(f2);
-
-        let eps = segment(&recovered, SegConfig::new());
-        let safety = injection_safety(&eps);
-        assert_eq!(safety.injected_episodes, 2);
-        assert_eq!(safety.recovered, 1);
-        assert_eq!(safety.stuck, 1, "the unrecovered injection must be flagged");
+        let labeled = |mut r: Record| {
+            r.label = Some(FailureClass::SingboxDead);
+            r
+        };
+        // Window A: a class transition inside one injection (dns_fail -> singbox_dead)
+        // then a healthy record => ONE window, recovered (not two, not stuck).
+        // Window B: injection followed only by faulty records => stuck.
+        // Window C: injection at the very tail => pending (censored, not a failure).
+        let records = vec![
+            rec(0, 100, FailureClass::None),
+            labeled(rec(1, 160, FailureClass::DnsFail)), // A onset (transition inside)
+            labeled(rec(2, 220, FailureClass::SingboxDead)), // A peak
+            rec(3, 280, FailureClass::None),             // A recovered
+            rec(4, 340, FailureClass::None),
+            labeled(rec(5, 400, FailureClass::SingboxDead)), // B
+            rec(6, 460, FailureClass::NodeDead),             // B: still faulty, never healthy
+            labeled(rec(7, 520, FailureClass::SingboxDead)), // C at the tail
+        ];
+        let s = injection_safety(&records);
+        assert_eq!(s.windows, 3, "three distinct injection windows");
+        assert_eq!(s.recovered, 1, "the transition window recovered as one");
+        assert_eq!(s.stuck, 1, "the never-healthy window is stuck");
+        assert_eq!(s.pending, 1, "the tail window is censored, not stuck");
     }
 }

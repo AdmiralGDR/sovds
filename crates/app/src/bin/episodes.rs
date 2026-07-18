@@ -47,7 +47,7 @@ fn main() -> ExitCode {
     }
     print_summary(&summary, episodes.len());
     print_injection_scorecard(&corpus.records);
-    print_injection_safety(&episodes);
+    print_injection_safety(&corpus.records);
 
     eprintln!(
         "\n(from {} record(s) in {} file(s); {} line(s) skipped)",
@@ -124,19 +124,23 @@ fn print_injection_scorecard(records: &[sovereign_core::record::Record]) {
 }
 
 /// Rollback safety for the autonomous injector: did every induced fault recover?
-/// Only shown once injected episodes exist.
-fn print_injection_safety(episodes: &[Episode]) {
-    let s = injection_safety(episodes);
-    if s.injected_episodes == 0 {
+/// Measured over injection windows. Only shown once injections exist.
+fn print_injection_safety(records: &[sovereign_core::record::Record]) {
+    let s = injection_safety(records);
+    if s.windows == 0 {
         return;
     }
-    println!(
-        "\nInjection rollback safety: {}/{} induced episodes auto-recovered.",
-        s.recovered, s.injected_episodes
+    let mut line = format!(
+        "\nInjection rollback safety: {}/{} windows auto-recovered",
+        s.recovered, s.windows
     );
+    if s.pending > 0 {
+        line.push_str(&format!(", {} pending (in flight)", s.pending));
+    }
+    println!("{line}.");
     if s.stuck > 0 {
         println!(
-            "  ⚠ {} injected episode(s) did NOT confirm recovery — check the router \
+            "  ⚠ {} injection window(s) never returned to health — check the router \
              (sovereign-inject --clear) and the failsafes.",
             s.stuck
         );

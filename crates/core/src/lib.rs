@@ -26,4 +26,7 @@ pub mod pipeline;
 pub mod ports;
 pub mod record;
 pub mod scenario;
-pub mod stats;
+
+/// Online statistics (EWMA, one-sided CUSUM) now live in the `sovds` toolkit;
+/// re-exported here so existing `crate::stats` paths keep working unchanged.
+pub use sovds::stats;

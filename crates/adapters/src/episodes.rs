@@ -118,21 +118,40 @@ pub fn injection_safety(records: &[Record]) -> InjectionSafety {
     s
 }
 
-/// Detection scorecard for deliberately injected faults: over records carrying a
-/// ground-truth `inject=` label, how often did the rules diagnose the class we
-/// actually induced? This is the payoff of labelled injection — it measures the
-/// classifier on real router behaviour, not synthetic telemetry (the principle).
+/// Detection scorecard for deliberately injected faults, measured **per injection
+/// window** — the honest question is "of the times we induced this fault, in how
+/// many did the brain diagnose it?", not "what fraction of labelled rows matched"
+/// (the principle: measure the right thing).
+///
+/// A per-record rate is misleading: one injection window spans a transition edge
+/// (e.g. DNS fails for a cycle as the tunnel drops during a `singbox_dead` break)
+/// and possibly a dry-run marker where nothing actually broke. Scoring per record
+/// counts those as misses though the brain behaved correctly. Per window, each
+/// window falls into exactly one bucket:
+/// * **detected** — at least one cycle in the window classified as the injected
+///   class (the brain caught it);
+/// * **missed** — the window showed a fault (some non-`none` class) but never the
+///   injected one (diagnosed the wrong fault);
+/// * **silent** — every cycle read `none`: the fault never manifested in telemetry
+///   (a dry-run marker, or the probe cadence fell entirely outside the real break)
+///   — not a classifier failure, reported apart so it can't drag the rate down.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InjectionStat {
     pub class: FailureClass,
-    /// Records taken while this class was being injected.
-    pub labeled: usize,
-    /// Of those, records the rules classified as the injected class (a hit).
+    /// Injection windows of this class.
+    pub windows: usize,
+    /// Windows where the brain diagnosed the injected class at least once.
     pub detected: usize,
+    /// Windows that showed a fault, but never the injected class.
+    pub missed: usize,
+    /// Windows where the fault never manifested in telemetry (dry-run / cadence miss).
+    pub silent: usize,
+    /// Total labelled records (dataset volume, for context).
+    pub records: usize,
 }
 
-/// Score injection detection per class, in canonical order, skipping classes that
-/// were never injected.
+/// Score injection detection per class, per window, in canonical order, skipping
+/// classes that were never injected.
 #[must_use]
 pub fn injection_accuracy(records: &[Record]) -> Vec<InjectionStat> {
     [
@@ -144,21 +163,55 @@ pub fn injection_accuracy(records: &[Record]) -> Vec<InjectionStat> {
     ]
     .into_iter()
     .filter_map(|class| {
-        let labeled = records.iter().filter(|r| r.label == Some(class)).count();
-        if labeled == 0 {
-            return None;
-        }
-        let detected = records
-            .iter()
-            .filter(|r| r.label == Some(class) && r.failure == class)
-            .count();
-        Some(InjectionStat {
-            class,
-            labeled,
-            detected,
-        })
+        let stat = window_stat(class, records);
+        (stat.windows > 0).then_some(stat)
     })
     .collect()
+}
+
+/// Per-window detection tally for one class over the record stream.
+fn window_stat(class: FailureClass, records: &[Record]) -> InjectionStat {
+    let mut stat = InjectionStat {
+        class,
+        windows: 0,
+        detected: 0,
+        missed: 0,
+        silent: 0,
+        records: 0,
+    };
+    let mut i = 0usize;
+    while let Some(rec) = records.get(i) {
+        if rec.label != Some(class) {
+            i = i.saturating_add(1);
+            continue;
+        }
+        // Walk to the end of this contiguous same-class injection window.
+        let mut j = i;
+        let mut hit = false;
+        let mut any_fault = false;
+        while records.get(j).is_some_and(|r| r.label == Some(class)) {
+            if let Some(r) = records.get(j) {
+                stat.records = stat.records.saturating_add(1);
+                if r.failure == class {
+                    hit = true;
+                }
+                if r.failure != FailureClass::None {
+                    any_fault = true;
+                }
+            }
+            j = j.saturating_add(1);
+        }
+        stat.windows = stat.windows.saturating_add(1);
+        if hit {
+            stat.detected = stat.detected.saturating_add(1);
+        } else if any_fault {
+            stat.missed = stat.missed.saturating_add(1);
+        } else {
+            stat.silent = stat.silent.saturating_add(1);
+        }
+        i = j;
+    }
+    stat
 }
 
 fn rollup(class: FailureClass, episodes: &[Episode]) -> ClassEpisodes {
@@ -283,28 +336,37 @@ mod tests {
     }
 
     #[test]
-    fn injection_accuracy_scores_hits_and_misses() {
+    fn injection_accuracy_buckets_windows_detected_missed_silent() {
         use super::injection_accuracy;
-        // Two records injected as singbox_dead: one correctly diagnosed, one missed
-        // (e.g. a dry-run window where nothing actually broke -> class=none).
-        let mut hit = rec(1, 100, FailureClass::SingboxDead);
-        hit.label = Some(FailureClass::SingboxDead);
-        let mut miss = rec(2, 160, FailureClass::None);
-        miss.label = Some(FailureClass::SingboxDead);
-        let organic = rec(3, 220, FailureClass::NodeDegraded); // no label
-        let stats = injection_accuracy(&[hit, miss, organic]);
-        assert_eq!(stats.len(), 1, "only injected classes are scored");
-        let s = stats.iter().find(|s| s.class == FailureClass::SingboxDead);
-        assert!(matches!(s, Some(st) if st.labeled == 2 && st.detected == 1));
+        let labeled = |mut r: Record, c: FailureClass| {
+            r.label = Some(c);
+            r
+        };
+        // Three singbox_dead windows, separated by healthy gaps:
+        //  W1: a transition edge (dns_fail) then the real peak (sb=dead) -> DETECTED.
+        //  W2: a dry-run marker, telemetry never broke (all none)        -> SILENT.
+        //  W3: showed a fault but only ever the wrong class (node_dead)  -> MISSED.
+        let sd = FailureClass::SingboxDead;
+        let records = vec![
+            labeled(rec(1, 100, FailureClass::DnsFail), sd),
+            labeled(rec(2, 160, sd), sd),
+            rec(3, 220, FailureClass::None),
+            labeled(rec(4, 280, FailureClass::None), sd),
+            rec(5, 340, FailureClass::None),
+            labeled(rec(6, 400, FailureClass::NodeDead), sd),
+            rec(7, 460, FailureClass::None),
+        ];
+        let stats = injection_accuracy(&records);
+        let s = stats.iter().find(|s| s.class == sd);
+        assert!(matches!(s, Some(st)
+            if st.windows == 3 && st.detected == 1 && st.silent == 1 && st.missed == 1 && st.records == 4));
     }
 
     #[test]
     fn injection_accuracy_scores_each_class_independently() {
         use super::injection_accuracy;
-        // A mixed autonomous run: singbox_dead injected twice (both detected) and
-        // dns_fail injected twice (one detected, one a dry-run miss). Each class is
-        // scored on its own — proving the tooling is class-generic and adding a new
-        // injected class needs no code change.
+        // A mixed run scored per class, per window — proves the tooling is
+        // class-generic (a new injected class needs no code change).
         let labeled = |mut r: Record, c: FailureClass| {
             r.label = Some(c);
             r
@@ -314,19 +376,16 @@ mod tests {
                 rec(1, 100, FailureClass::SingboxDead),
                 FailureClass::SingboxDead,
             ),
-            labeled(
-                rec(2, 160, FailureClass::SingboxDead),
-                FailureClass::SingboxDead,
-            ),
+            rec(2, 160, FailureClass::None),
             labeled(rec(3, 220, FailureClass::DnsFail), FailureClass::DnsFail),
-            labeled(rec(4, 280, FailureClass::None), FailureClass::DnsFail), // miss
+            rec(4, 280, FailureClass::None),
         ];
         let stats = injection_accuracy(&records);
         assert_eq!(stats.len(), 2, "both injected classes appear");
         let sb = stats.iter().find(|s| s.class == FailureClass::SingboxDead);
         let dns = stats.iter().find(|s| s.class == FailureClass::DnsFail);
-        assert!(matches!(sb, Some(s) if s.labeled == 2 && s.detected == 2));
-        assert!(matches!(dns, Some(s) if s.labeled == 2 && s.detected == 1));
+        assert!(matches!(sb, Some(s) if s.windows == 1 && s.detected == 1));
+        assert!(matches!(dns, Some(s) if s.windows == 1 && s.detected == 1));
     }
 
     #[test]

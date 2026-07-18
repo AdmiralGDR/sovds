@@ -18,6 +18,7 @@ use crate::ssh::SshExec;
 use crate::telemetry::parse_snapshot;
 use sovereign_core::domain::Telemetry;
 use sovereign_core::error::ProbeError;
+use sovereign_core::failure::FailureClass;
 
 /// Router-side buffer path (tmpfs — RAM only, never flash).
 pub const BUFFER: &str = "/tmp/sovereign-buffer.log";
@@ -27,11 +28,13 @@ pub const BUFFER: &str = "/tmp/sovereign-buffer.log";
 /// anything within ±45 s of an existing record is a duplicate, not new signal.
 pub const DEDUP_WINDOW_S: u64 = 45;
 
-/// One recovered observation: when it was taken, and what was seen.
+/// One recovered observation: when it was taken, what was seen, and whether it
+/// was labelled as a deliberate injection at the time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Sample {
     pub ts: u64,
     pub telemetry: Telemetry,
+    pub injected: Option<FailureClass>,
 }
 
 /// Parse one buffer line (`ts=<unix> <telemetry tokens...>`) into a [`Sample`].
@@ -54,8 +57,12 @@ pub fn parse_buffer_line(line: &str) -> Result<Sample, ProbeError> {
         }
     }
     let ts = ts.ok_or(ProbeError::Malformed)?;
-    let telemetry = parse_snapshot(&snapshot)?;
-    Ok(Sample { ts, telemetry })
+    let observation = parse_snapshot(&snapshot)?;
+    Ok(Sample {
+        ts,
+        telemetry: observation.telemetry,
+        injected: observation.injected,
+    })
 }
 
 /// Keep only samples the dataset does not already cover: `existing` must be the
@@ -130,6 +137,7 @@ mod tests {
                 nodes: [None; MAX_NODES],
                 aux: Aux::UNKNOWN,
             },
+            injected: None,
         }
     }
 

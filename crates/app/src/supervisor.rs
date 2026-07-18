@@ -59,12 +59,12 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
     /// Run exactly one supervision cycle and return a full [`Record`] of it.
     pub fn step(&mut self, now_unix: u64) -> Record {
         let now = Tick(self.tick);
-        let (observed, probed) = match self.telemetry.sample() {
-            Ok(observation) => (observation, true),
+        let (observed, injected, probed) = match self.telemetry.sample() {
+            Ok(obs) => (obs.telemetry, obs.injected, true),
             // Graceful degradation: an unobservable system is treated as all
             // Unknown, which classifies as "no fault" — so a probe outage can
             // never, by itself, trigger a disruptive action.
-            Err(_) => (all_unknown(), false),
+            Err(_) => (all_unknown(), None, false),
         };
 
         // One cycle of pure decision logic (shared with the offline replay tool),
@@ -102,6 +102,8 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
             action: cycle.action,
             outcome,
             source: Source::Live,
+            // Ground truth: whether this cycle's fault was one we injected.
+            label: injected,
         }
     }
 
@@ -182,7 +184,7 @@ mod tests {
     use sovereign_core::fleet::FleetConfig;
     use sovereign_core::fsm::Reason;
     use sovereign_core::fsm::{Action, Config, State};
-    use sovereign_core::ports::{Actuation, Actuator, Notifier, TelemetrySource};
+    use sovereign_core::ports::{Actuation, Actuator, Notifier, Observation, TelemetrySource};
     use sovereign_core::record::Outcome;
     use std::cell::Cell;
     use std::time::Duration;
@@ -220,7 +222,7 @@ mod tests {
         idx: Cell<usize>,
     }
     impl TelemetrySource for ScriptedTelemetry {
-        fn sample(&self) -> Result<Telemetry, ProbeError> {
+        fn sample(&self) -> Result<Observation, ProbeError> {
             let i = self.idx.get();
             let out = self
                 .samples
@@ -228,7 +230,7 @@ mod tests {
                 .copied()
                 .unwrap_or_else(|| Ok(healthy()));
             self.idx.set(i.saturating_add(1));
-            out
+            out.map(Observation::organic)
         }
     }
 

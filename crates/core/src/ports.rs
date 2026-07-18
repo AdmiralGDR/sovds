@@ -11,7 +11,33 @@
 
 use crate::domain::{NodeId, Telemetry};
 use crate::error::{ActError, ProbeError};
+use crate::failure::FailureClass;
 use crate::fsm::Reason;
+
+/// One observation of the system plus its ground-truth injection label.
+///
+/// `telemetry` is the health signal the core reasons over. `injected` is
+/// out-of-band ground truth — the fault class we deliberately induced this cycle
+/// (read from the router's injection marker), or `None` in organic operation. The
+/// core ignores `injected` for decisions; it rides through to the record so the
+/// dataset can tell "we broke it on purpose" from a real fault (the principle: the two
+/// are different states and must be representable as such).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Observation {
+    pub telemetry: Telemetry,
+    pub injected: Option<FailureClass>,
+}
+
+impl Observation {
+    /// An organic observation (nothing injected).
+    #[must_use]
+    pub const fn organic(telemetry: Telemetry) -> Self {
+        Self {
+            telemetry,
+            injected: None,
+        }
+    }
+}
 
 /// A source of system observations.
 ///
@@ -20,8 +46,9 @@ use crate::fsm::Reason;
 /// [`Telemetry`] must already have been validated at the boundary — the core
 /// trusts it completely.
 pub trait TelemetrySource {
-    /// Take one complete, validated observation of the system.
-    fn sample(&self) -> Result<Telemetry, ProbeError>;
+    /// Take one complete, validated observation of the system, including any
+    /// ground-truth injection label read from the router this cycle.
+    fn sample(&self) -> Result<Observation, ProbeError>;
 }
 
 /// Whether a remedy was actually carried out on the device, or only simulated.

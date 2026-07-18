@@ -85,7 +85,13 @@ cargo test --all                 # deterministic unit tests
 - `sovereign-inspect [log]` — dataset metrics (class balance, latency distribution).
 - `sovereign-episodes [log] [--list]` — segment the log into **fault episodes**
   (the real training/analysis unit) and report training-readiness per class:
-  independent incidents, not rows. See [FORMAT.md](FORMAT.md).
+  independent incidents, not rows. `--list` flags which episodes were injected.
+  See [FORMAT.md](FORMAT.md).
+- `sovereign-inject <class> [--secs N]` — arm a **ground-truth injection label**: a
+  bounded, auto-expiring marker so records taken while a fault is deliberately
+  induced are stamped `inject=<class>` and stay distinguishable from real faults.
+  Writes only a marker (it does not disrupt any service itself — inducing the fault
+  is a separate, explicit step). `--status` / `--clear` manage it.
 - `sovereign-replay` — replay the corpus under different adaptive configs (tuning
   as measurement, not guesswork).
 - `sovereign-backfill` — loss-free drain of the router's fallback buffer.

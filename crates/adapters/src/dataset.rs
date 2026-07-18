@@ -92,6 +92,7 @@ mod tests {
             action: Action::Observe,
             outcome: Outcome::NotActed,
             source: Source::Live,
+            label: None,
         }
     }
 

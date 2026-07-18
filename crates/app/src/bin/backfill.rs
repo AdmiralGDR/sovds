@@ -96,6 +96,8 @@ fn main() -> ExitCode {
             action: cycle.action,
             outcome: Outcome::NotActed,
             source: Source::Backfill,
+            // Preserve the ground-truth injection label recovered from the buffer.
+            label: sample.injected,
         };
         match recorder.append(&record) {
             Ok(()) => appended = appended.saturating_add(1),

@@ -78,6 +78,7 @@ with backoff** (never thrash). Recovery is honored immediately at any point.
 cargo fmt --all --check          # formatting is not negotiable
 cargo clippy --all-targets -- -D warnings   # warnings are errors
 cargo test --all                 # deterministic unit tests
+sh scripts/reproducible-build.sh # the principle: all 7 binaries byte-identical (self-checking gate)
 ```
 
 ## Tools

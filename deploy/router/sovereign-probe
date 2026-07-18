@@ -9,14 +9,21 @@
 #
 # the internal engineering charter discipline, within busybox limits:
 #   * Bounded: every network call has a hard timeout; the buffer is capped at
-#     MAX_LINES (~3 days at 1/min, <1 MB of RAM) — oldest lines are dropped.
+#     MAX_LINES (~14 days at 1/min, ~2.9 MB of RAM at ~145 B/line) — oldest lines
+#     are dropped. Sized from evidence: the largest observed laptop-off gap was
+#     3.12 days, so 14 days is >4x margin, and 2.9 MB is <2% of the router's
+#     ~233 MB free tmpfs. It only ever fills during a multi-day laptop-off; when
+#     the laptop is on, sovereign-backfill drains it every 15 min so it stays tiny.
+#     Residual bound (accepted): a >14-day absence, or a router reboot mid-outage
+#     (tmpfs is RAM), still loses buffered samples — flash is deliberately not used
+#     (wear + "the dataset lives on the laptop").
 #   * Graceful: a failed sub-probe reports its own token (tunnel=dead etc.);
 #     nothing here can fail loudly or hang the cron slot.
 #   * One line per sample, self-describing `key=value` tokens — the exact
 #     snapshot contract the brain's parser already validates.
 
 BUF=/tmp/sovereign-buffer.log
-MAX_LINES=4320
+MAX_LINES=20160
 
 S=$(uci -q get podkop.settings.yacd_secret_key)
 ts=$(date +%s)

@@ -83,6 +83,9 @@ cargo test --all                 # deterministic unit tests
 ## Tools
 
 - `sovereign-inspect [log]` — dataset metrics (class balance, latency distribution).
+- `sovereign-episodes [log] [--list]` — segment the log into **fault episodes**
+  (the real training/analysis unit) and report training-readiness per class:
+  independent incidents, not rows. See [FORMAT.md](FORMAT.md).
 - `sovereign-replay` — replay the corpus under different adaptive configs (tuning
   as measurement, not guesswork).
 - `sovereign-backfill` — loss-free drain of the router's fallback buffer.

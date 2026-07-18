@@ -27,6 +27,10 @@ path = "src/bin/backfill.rs"
 name = "sovereign-scenario"
 path = "src/bin/scenario.rs"
 
+[[bin]]
+name = "sovereign-episodes"
+path = "src/bin/episodes.rs"
+
 [dependencies]
 sovereign-core = { path = "../core" }
 sovereign-adapters = { path = "../adapters" }

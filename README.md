@@ -1,12 +1,22 @@
 # Sovereign Router Brain
 
-An off-router supervisor for the home network. The router stays dumb and
-reliable; the intelligence — health scoring, failure classification, and
-self-healing remediation — lives here, on a machine with real compute (the
-laptop today, a home server later). It reaches the router only through isolated
-adapters over SSH/Tailscale.
+This repository holds two things, cleanly separated:
 
-Built strictly to `the internal engineering charter` (the principles of Sovereign Engineering).
+1. **[`sovds` — Sovereign Dataset Toolkit](crates/sovds/README.md)** — a
+   **domain-agnostic, zero-dependency, `no_std`** library for building labelled
+   ground-truth datasets from live systems (safe controlled fault injection +
+   telemetry → episodes → detection & rollback-safety metrics). This is the
+   reusable product; embed it in any project via one trait. See its
+   [README](crates/sovds/README.md) and
+   [`host_monitor` example](crates/sovds/examples/host_monitor.rs).
+2. **The Sovereign Router Brain** — the **reference implementation**: an off-router
+   supervisor for the home network, built on `sovds`. The router stays dumb and
+   reliable; the intelligence — health scoring, failure classification, and
+   self-healing remediation — lives here, on a machine with real compute (the
+   laptop today, a home server later). It reaches the router only through isolated
+   adapters over SSH/Tailscale.
+
+Both are built strictly to `the internal engineering charter` (the principles of Sovereign Engineering).
 
 ## Why off-router
 

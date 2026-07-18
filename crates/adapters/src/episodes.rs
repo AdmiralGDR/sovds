@@ -62,6 +62,49 @@ pub fn summarize(episodes: &[Episode]) -> Vec<ClassEpisodes> {
     .collect()
 }
 
+/// Detection scorecard for deliberately injected faults: over records carrying a
+/// ground-truth `inject=` label, how often did the rules diagnose the class we
+/// actually induced? This is the payoff of labelled injection — it measures the
+/// classifier on real router behaviour, not synthetic telemetry (the principle).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InjectionStat {
+    pub class: FailureClass,
+    /// Records taken while this class was being injected.
+    pub labeled: usize,
+    /// Of those, records the rules classified as the injected class (a hit).
+    pub detected: usize,
+}
+
+/// Score injection detection per class, in canonical order, skipping classes that
+/// were never injected.
+#[must_use]
+pub fn injection_accuracy(records: &[Record]) -> Vec<InjectionStat> {
+    [
+        FailureClass::WanDown,
+        FailureClass::SingboxDead,
+        FailureClass::NodeDead,
+        FailureClass::NodeDegraded,
+        FailureClass::DnsFail,
+    ]
+    .into_iter()
+    .filter_map(|class| {
+        let labeled = records.iter().filter(|r| r.label == Some(class)).count();
+        if labeled == 0 {
+            return None;
+        }
+        let detected = records
+            .iter()
+            .filter(|r| r.label == Some(class) && r.failure == class)
+            .count();
+        Some(InjectionStat {
+            class,
+            labeled,
+            detected,
+        })
+    })
+    .collect()
+}
+
 fn rollup(class: FailureClass, episodes: &[Episode]) -> ClassEpisodes {
     let mut count = 0usize;
     let mut recovered = 0usize;
@@ -181,5 +224,21 @@ mod tests {
         assert_eq!(dns.count, 2, "two independent dns_fail episodes");
         assert_eq!(dns.recovered, 2);
         assert_eq!(dns.total_records, 3);
+    }
+
+    #[test]
+    fn injection_accuracy_scores_hits_and_misses() {
+        use super::injection_accuracy;
+        // Two records injected as singbox_dead: one correctly diagnosed, one missed
+        // (e.g. a dry-run window where nothing actually broke -> class=none).
+        let mut hit = rec(1, 100, FailureClass::SingboxDead);
+        hit.label = Some(FailureClass::SingboxDead);
+        let mut miss = rec(2, 160, FailureClass::None);
+        miss.label = Some(FailureClass::SingboxDead);
+        let organic = rec(3, 220, FailureClass::NodeDegraded); // no label
+        let stats = injection_accuracy(&[hit, miss, organic]);
+        assert_eq!(stats.len(), 1, "only injected classes are scored");
+        let s = stats.iter().find(|s| s.class == FailureClass::SingboxDead);
+        assert!(matches!(s, Some(st) if st.labeled == 2 && st.detected == 1));
     }
 }

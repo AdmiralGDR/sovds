@@ -7,7 +7,7 @@
 //! slowly, and this prints exactly how slowly. `--list` dumps every episode.
 
 use sovereign_adapters::dataset;
-use sovereign_adapters::episodes::{segment, summarize, ClassEpisodes};
+use sovereign_adapters::episodes::{injection_accuracy, segment, summarize, ClassEpisodes};
 use sovereign_core::episode::{Episode, EpisodeEnd, SegConfig};
 use sovereign_core::failure::FailureClass;
 use sovereign_core::record::Source;
@@ -44,6 +44,7 @@ fn main() -> ExitCode {
         println!();
     }
     print_summary(&summary, episodes.len());
+    print_injection_scorecard(&corpus.records);
 
     eprintln!(
         "\n(from {} record(s) in {} file(s); {} line(s) skipped)",
@@ -86,6 +87,35 @@ fn print_summary(summary: &[ClassEpisodes], total: usize) {
         println!(
             "Passive collection converges slowly for rare classes — the scenario suite \
              (sovereign-scenario --seed) seeds the empty ones."
+        );
+    }
+}
+
+/// Injection ground-truth vs. diagnosis: did the rules detect the faults we
+/// induced on purpose? Only shown once labelled injection data exists.
+fn print_injection_scorecard(records: &[sovereign_core::record::Record]) {
+    let stats = injection_accuracy(records);
+    if stats.is_empty() {
+        return;
+    }
+    println!("\nInjection detection (ground truth `inject=` vs. diagnosed `class=`)\n");
+    println!(
+        "{:<14} {:>8} {:>9} {:>9}",
+        "injected", "records", "detected", "rate"
+    );
+    println!("{}", "-".repeat(44));
+    for s in &stats {
+        let rate = s
+            .detected
+            .saturating_mul(100)
+            .checked_div(s.labeled)
+            .unwrap_or(0);
+        println!(
+            "{:<14} {:>8} {:>9} {:>8}%",
+            class_label(s.class),
+            s.labeled,
+            s.detected,
+            rate
         );
     }
 }

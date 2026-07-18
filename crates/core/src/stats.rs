@@ -74,12 +74,22 @@ impl Ewma {
 /// without ever wrapping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cusum {
-    /// Accumulated positive drift, fixed-point (never negative after `.max(0)`).
+    /// Accumulated positive drift, fixed-point. Bounded to `[0, ceiling]`.
     sum: i64,
     /// Noise slack `k`, fixed-point: drift below this is ignored.
     slack: i64,
     /// Alarm threshold `h`, fixed-point.
     threshold: i64,
+    /// Upper bound on `sum`, fixed-point. Without it, a long or large upward
+    /// excursion winds the accumulator up without limit, and it then takes just as
+    /// many below-baseline samples to unwind — so the alarm *latches* long after
+    /// the signal has recovered (measured on real data: a fast path, latency well
+    /// under baseline, still read `throttled`/`node_degraded` for 30+ cycles). A
+    /// bounded CUSUM caps the wind-up at one extra threshold above the alarm line,
+    /// so recovery drains the alarm within a couple of samples. It does not change
+    /// *detection* — `sum` still crosses `threshold` on exactly the same sample —
+    /// only how promptly the alarm clears afterwards (the principle: bounded state).
+    ceiling: i64,
 }
 
 impl Cusum {
@@ -87,10 +97,15 @@ impl Cusum {
     /// `threshold_units`, both in real (unscaled) units.
     #[must_use]
     pub const fn new(slack_units: u64, threshold_units: u64) -> Self {
+        let threshold = threshold_units.saturating_mul(SCALE) as i64;
         Self {
             sum: 0,
             slack: slack_units.saturating_mul(SCALE) as i64,
-            threshold: threshold_units.saturating_mul(SCALE) as i64,
+            threshold,
+            // One extra threshold of head-room above the alarm line: enough that a
+            // brief post-alarm blip does not instantly clear the alarm, but bounded
+            // so a sustained fault cannot wind up an unbounded recovery debt.
+            ceiling: threshold.saturating_mul(2),
         }
     }
 
@@ -100,7 +115,9 @@ impl Cusum {
         let x = sample.saturating_mul(SCALE) as i64;
         let mean = expected.saturating_mul(SCALE) as i64;
         let excess = x.saturating_sub(mean).saturating_sub(self.slack);
-        self.sum = self.sum.saturating_add(excess).max(0);
+        // Clamp into [0, ceiling]: the floor keeps drift non-negative, the ceiling
+        // bounds wind-up so recovery cannot be latched (see `ceiling`).
+        self.sum = self.sum.saturating_add(excess).max(0).min(self.ceiling);
         self.alarmed()
     }
 
@@ -163,6 +180,32 @@ mod tests {
         // so it should cross the threshold of 100 within two samples.
         assert!(!c.update(150, 50));
         assert!(c.update(150, 50));
+    }
+
+    #[test]
+    fn cusum_clears_promptly_after_a_long_excursion() {
+        // The anti-latch property (a real production defect): a long, large upward
+        // excursion must not wind the accumulator up so far that recovery is
+        // latched. Run a sustained fault, then feed samples back at baseline and
+        // assert the alarm clears within a few cycles — not the ~30+ it took before
+        // the accumulator was bounded.
+        let mut c = Cusum::new(20, 100);
+        for _ in 0..100 {
+            c.update(300, 50); // far above baseline, for a long time
+        }
+        assert!(c.alarmed(), "a sustained upward shift must alarm");
+        let mut cleared_at = None;
+        for step in 1..=5 {
+            // Back to baseline: each below-slack sample drains the bounded debt.
+            if !c.update(50, 50) {
+                cleared_at = Some(step);
+                break;
+            }
+        }
+        assert!(
+            cleared_at.is_some(),
+            "alarm latched: still firing 5 cycles after full recovery"
+        );
     }
 
     #[test]

@@ -8,7 +8,7 @@
 //! the right thing). A healthy system rarely fails, so the rare classes converge
 //! in episodes agonisingly slowly; this is the instrument that says how slowly.
 
-use sovereign_core::episode::{Episode, SegConfig, Segmenter};
+use sovereign_core::episode::{Episode, EpisodeEnd, SegConfig, Segmenter};
 use sovereign_core::failure::FailureClass;
 use sovereign_core::record::Record;
 
@@ -60,6 +60,39 @@ pub fn summarize(episodes: &[Episode]) -> Vec<ClassEpisodes> {
     .into_iter()
     .map(|class| rollup(class, episodes))
     .collect()
+}
+
+/// Rollback-safety tally for an autonomous fault injector: of the episodes we
+/// induced on purpose, how many cleanly auto-recovered vs. stayed stuck? A `stuck`
+/// count above zero means an injection did not revert within the data — the one
+/// thing an unattended disruptor must never do (the principle/III: bounded, self-heal).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InjectionSafety {
+    /// Episodes flagged as a deliberate injection.
+    pub injected_episodes: usize,
+    /// Of those, episodes that ended by recovery (the tunnel came back).
+    pub recovered: usize,
+    /// Injected episodes that did NOT end in recovery (still ongoing / cut) —
+    /// candidates for a failed rollback; worth an operator's eyes.
+    pub stuck: usize,
+}
+
+/// Tally injection rollback safety across the episode set.
+#[must_use]
+pub fn injection_safety(episodes: &[Episode]) -> InjectionSafety {
+    let mut injected_episodes = 0usize;
+    let mut recovered = 0usize;
+    for ep in episodes.iter().filter(|e| e.injected.is_some()) {
+        injected_episodes = injected_episodes.saturating_add(1);
+        if matches!(ep.end, EpisodeEnd::Recovered) {
+            recovered = recovered.saturating_add(1);
+        }
+    }
+    InjectionSafety {
+        injected_episodes,
+        recovered,
+        stuck: injected_episodes.saturating_sub(recovered),
+    }
 }
 
 /// Detection scorecard for deliberately injected faults: over records carrying a
@@ -240,5 +273,31 @@ mod tests {
         assert_eq!(stats.len(), 1, "only injected classes are scored");
         let s = stats.iter().find(|s| s.class == FailureClass::SingboxDead);
         assert!(matches!(s, Some(st) if st.labeled == 2 && st.detected == 1));
+    }
+
+    #[test]
+    fn injection_safety_flags_a_stuck_rollback() {
+        use super::injection_safety;
+        // One injected singbox_dead episode that recovered, and one that stayed
+        // ongoing (the collector ended before the tunnel came back = a rollback we
+        // could not confirm).
+        let mut recovered = Vec::new();
+        recovered.push(rec(0, 100, FailureClass::None));
+        let mut f1 = rec(1, 160, FailureClass::SingboxDead);
+        f1.label = Some(FailureClass::SingboxDead);
+        recovered.push(f1);
+        for t in 2..10 {
+            recovered.push(rec(t, 100 + t * 60, FailureClass::None)); // clear recovery
+        }
+        // Second injection at the very end -> never observed recovering.
+        let mut f2 = rec(10, 100 + 10 * 60, FailureClass::SingboxDead);
+        f2.label = Some(FailureClass::SingboxDead);
+        recovered.push(f2);
+
+        let eps = segment(&recovered, SegConfig::new());
+        let safety = injection_safety(&eps);
+        assert_eq!(safety.injected_episodes, 2);
+        assert_eq!(safety.recovered, 1);
+        assert_eq!(safety.stuck, 1, "the unrecovered injection must be flagged");
     }
 }

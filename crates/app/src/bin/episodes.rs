@@ -7,7 +7,9 @@
 //! slowly, and this prints exactly how slowly. `--list` dumps every episode.
 
 use sovereign_adapters::dataset;
-use sovereign_adapters::episodes::{injection_accuracy, segment, summarize, ClassEpisodes};
+use sovereign_adapters::episodes::{
+    injection_accuracy, injection_safety, segment, summarize, ClassEpisodes,
+};
 use sovereign_core::episode::{Episode, EpisodeEnd, SegConfig};
 use sovereign_core::failure::FailureClass;
 use sovereign_core::record::Source;
@@ -45,6 +47,7 @@ fn main() -> ExitCode {
     }
     print_summary(&summary, episodes.len());
     print_injection_scorecard(&corpus.records);
+    print_injection_safety(&episodes);
 
     eprintln!(
         "\n(from {} record(s) in {} file(s); {} line(s) skipped)",
@@ -116,6 +119,26 @@ fn print_injection_scorecard(records: &[sovereign_core::record::Record]) {
             s.labeled,
             s.detected,
             rate
+        );
+    }
+}
+
+/// Rollback safety for the autonomous injector: did every induced fault recover?
+/// Only shown once injected episodes exist.
+fn print_injection_safety(episodes: &[Episode]) {
+    let s = injection_safety(episodes);
+    if s.injected_episodes == 0 {
+        return;
+    }
+    println!(
+        "\nInjection rollback safety: {}/{} induced episodes auto-recovered.",
+        s.recovered, s.injected_episodes
+    );
+    if s.stuck > 0 {
+        println!(
+            "  ⚠ {} injected episode(s) did NOT confirm recovery — check the router \
+             (sovereign-inject --clear) and the failsafes.",
+            s.stuck
         );
     }
 }

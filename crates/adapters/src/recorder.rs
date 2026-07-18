@@ -106,7 +106,9 @@ pub(crate) fn suffixed(path: &Path, generation: u32) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{FileRecorder, RecordError};
-    use sovereign_core::domain::{Dns, LatencyMs, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES};
+    use sovereign_core::domain::{
+        Aux, Dns, LatencyMs, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES,
+    };
     use sovereign_core::failure::FailureClass;
     use sovereign_core::fleet::NodeVerdict;
     use sovereign_core::fsm::{Action, Reason, State};
@@ -126,6 +128,7 @@ mod tests {
                 },
                 dns: Dns::Ok,
                 nodes: [None; MAX_NODES],
+                aux: Aux::UNKNOWN,
             },
             path_verdict: NodeVerdict::Healthy,
             failure: FailureClass::None,

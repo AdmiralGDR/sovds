@@ -93,6 +93,54 @@ pub struct NodeHealth {
     pub latency: Option<LatencyMs>,
 }
 
+/// Whether traffic actually flows THROUGH the WAN — measured by fetching a
+/// neutral external host, independent of the PPPoE session state. This is the
+/// signal that catches the "session up but blackholed" failure a session-status
+/// check cannot see.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WanReach {
+    /// A neutral external host answered through the WAN.
+    Ok,
+    /// The WAN session may be up, but nothing external answers.
+    Blackhole,
+    /// Not measured this cycle.
+    Unknown,
+}
+
+/// Auxiliary health signals grouped in one sub-struct so the observation can
+/// grow without touching every `Telemetry` constructor again (new signals land
+/// here; call sites keep saying `aux: Aux::UNKNOWN`).
+///
+/// `Option`/`Unknown` uniformly means "not measured" — old records and failed
+/// sub-probes parse to exactly this value, never to a fake measurement.
+///
+/// Packet loss / jitter are deliberately absent: honest loss needs multiple
+/// probes per cycle (a real load multiplier), and jitter is derivable offline
+/// from the existing 1/min latency series — adding either now would be
+/// unjustified complexity (the principle / the principle).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Aux {
+    /// Real reachability through the WAN (see [`WanReach`]).
+    pub wan_reach: WanReach,
+    /// Router 1-minute load average, times 100 (integer fixed-point, the principle).
+    pub load_centi: Option<u32>,
+    /// Router `MemAvailable`, in KiB.
+    pub mem_free_kb: Option<u32>,
+    /// The exit node the urltest group currently routes through.
+    pub active: Option<u8>,
+}
+
+impl Aux {
+    /// The "nothing measured" value — what old records parse to, and what every
+    /// constructor uses until a probe fills the fields in.
+    pub const UNKNOWN: Self = Self {
+        wan_reach: WanReach::Unknown,
+        load_centi: None,
+        mem_free_kb: None,
+        active: None,
+    };
+}
+
 /// One immutable observation of the whole system.
 ///
 /// This value is the sole input to the decision core (the principle: state is passed
@@ -105,4 +153,6 @@ pub struct Telemetry {
     pub tunnel: Tunnel,
     pub dns: Dns,
     pub nodes: [Option<NodeHealth>; MAX_NODES],
+    /// Auxiliary signals (WAN reachability, router resources, active node).
+    pub aux: Aux,
 }

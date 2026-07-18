@@ -459,22 +459,29 @@ mod tests {
         });
     }
 
-    /// DISCOVERED FINDING, pinned so it cannot drift silently: after a sustained
-    /// slow-down the adaptive layer keeps a latched CUSUM alarm over the raised
-    /// baseline, so the escalation ladder fires at least once *after* the path has
-    /// fully recovered (see `--trace node_degraded`). This is recovery lag, not a
-    /// cold-start false positive — the warmup stays clean (asserted above). It is a
-    /// real over-actuation the harness surfaced; closing it is separate,
-    /// data-driven tuning of the fleet's recovery behaviour. When that lands, this
-    /// expectation flips to zero.
+    /// Recovery lag is now BOUNDED (the `stats::Cusum` bounded-accumulator fix).
+    /// Before it, a sustained slow-down wound the CUSUM up without limit and the
+    /// alarm latched for 18–31 cycles past recovery, firing remedies on an
+    /// already-healthy path (measured on real data: 151 false-degraded verdicts /
+    /// 34 disruptive actions over the corpus). After it: at most one drain cycle,
+    /// so at most one lingering action even in the worst case of an instant
+    /// recovery. The step case (`node_degraded`) settles perfectly clean; the ramp
+    /// (`throttle`) keeps the inherent single-frame residual. This pins the fix.
     #[test]
-    fn adaptive_faults_exhibit_known_recovery_lag() {
+    fn adaptive_recovery_lag_is_bounded() {
         for_named(&["node_degraded", "throttle"], |report| {
             assert!(
-                report.recovery_actions > 0,
-                "{}: recovery lag unexpectedly gone — if the fleet now settles \
-                 cleanly, update this test to assert recovery_actions == 0",
-                report.name
+                report.recovery_actions <= 1,
+                "{}: recovery lag regressed to {} actions (bounded CUSUM should cap \
+                 it at 1)",
+                report.name,
+                report.recovery_actions
+            );
+        });
+        for_named(&["node_degraded"], |report| {
+            assert_eq!(
+                report.recovery_actions, 0,
+                "node_degraded (step recovery) should settle perfectly clean"
             );
         });
     }

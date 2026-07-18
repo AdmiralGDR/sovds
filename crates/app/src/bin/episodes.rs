@@ -101,26 +101,34 @@ fn print_injection_scorecard(records: &[sovereign_core::record::Record]) {
     if stats.is_empty() {
         return;
     }
-    println!("\nInjection detection (ground truth `inject=` vs. diagnosed `class=`)\n");
+    println!("\nInjection detection — per window (ground truth `inject=` vs diagnosed `class=`)\n");
     println!(
-        "{:<14} {:>8} {:>9} {:>9}",
-        "injected", "records", "detected", "rate"
+        "{:<14} {:>8} {:>9} {:>7} {:>7} {:>6}",
+        "injected", "windows", "detected", "missed", "silent", "rate"
     );
-    println!("{}", "-".repeat(44));
+    println!("{}", "-".repeat(56));
     for s in &stats {
+        // Rate is over windows where the fault actually manifested (detected+missed);
+        // silent windows (dry-run / cadence miss) are excluded, not counted against.
+        let manifested = s.detected.saturating_add(s.missed);
         let rate = s
             .detected
             .saturating_mul(100)
-            .checked_div(s.labeled)
-            .unwrap_or(0);
+            .checked_div(manifested)
+            .map_or_else(|| "n/a".to_string(), |r| format!("{r}%"));
         println!(
-            "{:<14} {:>8} {:>9} {:>8}%",
+            "{:<14} {:>8} {:>9} {:>7} {:>7} {:>6}",
             class_label(s.class),
-            s.labeled,
+            s.windows,
             s.detected,
+            s.missed,
+            s.silent,
             rate
         );
     }
+    println!(
+        "  (rate = detected / windows where the fault manifested; silent = dry-run/cadence miss)"
+    );
 }
 
 /// Rollback safety for the autonomous injector: did every induced fault recover?

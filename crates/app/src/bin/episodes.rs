@@ -7,14 +7,18 @@
 //! slowly, and this prints exactly how slowly. `--list` dumps every episode.
 
 use sovereign_adapters::dataset;
-use sovereign_adapters::episodes::{
-    injection_accuracy, injection_safety, segment, summarize, ClassEpisodes,
-};
-use sovereign_core::episode::{Episode, EpisodeEnd, SegConfig};
 use sovereign_core::failure::FailureClass;
 use sovereign_core::record::Source;
+use sovereign_core::routerdomain::RouterDomain;
+use sovds::episode::{segment, Episode, EpisodeEnd, SegConfig};
+use sovds::injection;
+use sovds::readiness::{summarize, ClassReadiness};
 use std::path::PathBuf;
 use std::process::ExitCode;
+
+type RouterEpisode = Episode<RouterDomain>;
+type RouterReadiness = ClassReadiness<RouterDomain>;
+type RouterRecord = sovereign_core::record::Record;
 
 /// A rough, honest target for independent episodes per class before a supervised
 /// model of that class is anything but a guess. Not a promise — a yardstick.
@@ -38,7 +42,7 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let episodes = segment(&corpus.records, SegConfig::new());
+    let episodes = segment::<RouterDomain>(&corpus.records, SegConfig::new());
     let summary = summarize(&episodes);
 
     if want_list() {
@@ -58,13 +62,13 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn print_summary(summary: &[ClassEpisodes], total: usize) {
+fn print_summary(summary: &[RouterReadiness], total: usize) {
     println!("Fault episodes (the training-readiness unit — independent incidents, not rows)\n");
     println!(
-        "{:<14} {:>8} {:>10} {:>8} {:>10} {:>11}  readiness",
-        "class", "episodes", "recovered", "acted", "cycles", "median"
+        "{:<14} {:>8} {:>10} {:>10} {:>11}  readiness",
+        "class", "episodes", "recovered", "cycles", "median"
     );
-    println!("{}", "-".repeat(78));
+    println!("{}", "-".repeat(70));
     for c in summary {
         let ready = if c.count >= READY_TARGET {
             "ok".to_string()
@@ -72,11 +76,10 @@ fn print_summary(summary: &[ClassEpisodes], total: usize) {
             format!("{}/{READY_TARGET}", c.count)
         };
         println!(
-            "{:<14} {:>8} {:>10} {:>8} {:>10} {:>9}s  {ready}",
+            "{:<14} {:>8} {:>10} {:>10} {:>9}s  {ready}",
             class_label(c.class),
             c.count,
             c.recovered,
-            c.with_action,
             c.total_records,
             c.median_secs,
         );
@@ -96,8 +99,8 @@ fn print_summary(summary: &[ClassEpisodes], total: usize) {
 
 /// Injection ground-truth vs. diagnosis: did the rules detect the faults we
 /// induced on purpose? Only shown once labelled injection data exists.
-fn print_injection_scorecard(records: &[sovereign_core::record::Record]) {
-    let stats = injection_accuracy(records);
+fn print_injection_scorecard(records: &[RouterRecord]) {
+    let stats: Vec<_> = injection::accuracy(records).collect();
     if stats.is_empty() {
         return;
     }
@@ -133,8 +136,8 @@ fn print_injection_scorecard(records: &[sovereign_core::record::Record]) {
 
 /// Rollback safety for the autonomous injector: did every induced fault recover?
 /// Measured over injection windows. Only shown once injections exist.
-fn print_injection_safety(records: &[sovereign_core::record::Record]) {
-    let s = injection_safety(records);
+fn print_injection_safety(records: &[RouterRecord]) {
+    let s = injection::safety(records);
     if s.windows == 0 {
         return;
     }
@@ -155,24 +158,23 @@ fn print_injection_safety(records: &[sovereign_core::record::Record]) {
     }
 }
 
-fn print_list(episodes: &[Episode]) {
+fn print_list(episodes: &[RouterEpisode]) {
     println!(
-        "{:<14} {:>6} {:>7} {:>5} {:>15} {:<8} {:<8} injected",
-        "class", "tick0", "dur(s)", "acts", "peak-action", "end", "src"
+        "{:<14} {:>6} {:>7} {:>5} {:<10} {:<8} injected",
+        "class", "tick0", "dur(s)", "cycl", "end", "src"
     );
-    println!("{}", "-".repeat(88));
+    println!("{}", "-".repeat(66));
     for e in episodes {
         let injected = match e.injected {
             Some(c) => class_label(c),
             None => "-",
         };
         println!(
-            "{:<14} {:>6} {:>7} {:>5} {:>15} {:<8} {:<8} {injected}",
+            "{:<14} {:>6} {:>7} {:>5} {:<10} {:<8} {injected}",
             class_label(e.class),
             e.start_tick.0,
             e.duration_secs(),
-            e.actions,
-            action_label(e.peak_action),
+            e.records,
             end_label(e.end),
             source_label(e.source),
         );
@@ -225,17 +227,5 @@ fn source_label(s: Source) -> &'static str {
         Source::Live => "live",
         Source::Backfill => "backfill",
         Source::Synthetic => "synth",
-    }
-}
-
-fn action_label(a: sovereign_core::fsm::Action) -> &'static str {
-    use sovereign_core::fsm::Action;
-    match a {
-        Action::Observe => "observe",
-        Action::SwitchNode => "switch_node",
-        Action::RestartSingbox => "restart_singbox",
-        Action::BounceWan => "bounce_wan",
-        Action::FailoverBackup => "failover_backup",
-        Action::Reboot => "reboot",
     }
 }

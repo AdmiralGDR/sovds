@@ -14,7 +14,6 @@
 pub mod actuator;
 pub mod backfill;
 pub mod dataset;
-pub mod episodes;
 pub mod notify;
 pub mod os;
 pub mod recorder;

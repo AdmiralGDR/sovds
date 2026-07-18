@@ -17,7 +17,7 @@ use sovereign_core::domain::Tick;
 use sovereign_core::fleet::Fleet;
 use sovereign_core::fsm::State;
 use sovereign_core::pipeline::decide_cycle;
-use sovereign_core::record::{Outcome, Record, Source};
+use sovereign_core::record::{Outcome, Record, RouterAnnot, Source};
 use std::process::ExitCode;
 
 // Reuse the main binary's configuration module (one source of env truth — DRY).
@@ -88,13 +88,15 @@ fn main() -> ExitCode {
             tick,
             wall_time: sample.ts,
             probed: true,
-            telemetry: sample.telemetry,
-            path_verdict: cycle.verdict,
-            failure: cycle.failure,
-            state: cycle.next_state,
-            reason: cycle.reason,
-            action: cycle.action,
-            outcome: Outcome::NotActed,
+            obs: sample.telemetry,
+            class: cycle.failure,
+            annot: RouterAnnot {
+                verdict: cycle.verdict,
+                state: cycle.next_state,
+                reason: cycle.reason,
+                action: cycle.action,
+                outcome: Outcome::NotActed,
+            },
             source: Source::Backfill,
             // Preserve the ground-truth injection label recovered from the buffer.
             label: sample.injected,

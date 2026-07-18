@@ -12,21 +12,10 @@
 /// (the principle: bounded execution).
 pub const MAX_NODES: usize = 8;
 
-/// Monotonic logical time: one tick is one supervision cycle.
-///
-/// The core never reads a real clock (the principle: agnostic core) — the caller
-/// injects `now`, which makes every decision reproducible in a test.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Tick(pub u64);
-
-impl Tick {
-    /// Advance by `n` ticks, saturating instead of overflowing so time is always
-    /// well defined (the principle: no undefined arithmetic).
-    #[must_use]
-    pub const fn saturating_add(self, n: u64) -> Self {
-        Self(self.0.saturating_add(n))
-    }
-}
+/// Monotonic logical time: one tick is one supervision cycle. Unified with the
+/// toolkit's clock (`sovds::record::Tick`) so a record's `tick` and the FSM's
+/// `now`/`until` are the same type — one logical clock, no conversions.
+pub use sovds::record::Tick;
 
 /// Round-trip latency of a probe, in milliseconds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

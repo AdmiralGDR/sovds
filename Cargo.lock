@@ -10,6 +10,7 @@ version = "0.1.0"
 name = "sovereign-adapters"
 version = "0.1.0"
 dependencies = [
+ "sovds",
  "sovereign-core",
 ]
 
@@ -17,6 +18,7 @@ dependencies = [
 name = "sovereign-app"
 version = "0.1.0"
 dependencies = [
+ "sovds",
  "sovereign-adapters",
  "sovereign-core",
 ]

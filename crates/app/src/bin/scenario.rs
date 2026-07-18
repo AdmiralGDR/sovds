@@ -16,7 +16,7 @@ use sovereign_adapters::recorder::FileRecorder;
 use sovereign_core::domain::Tick;
 use sovereign_core::failure::FailureClass;
 use sovereign_core::fsm::Action;
-use sovereign_core::record::{Outcome, Record, Source};
+use sovereign_core::record::{Outcome, Record, RouterAnnot, Source};
 use sovereign_core::scenario::{self, ScenarioReport};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -51,14 +51,16 @@ fn main() -> ExitCode {
                     // Synthetic frames have no wall-clock origin; 0 == unknown.
                     wall_time: 0,
                     probed: true,
-                    telemetry: *tel,
-                    path_verdict: cycle.verdict,
-                    failure: cycle.failure,
-                    state: cycle.next_state,
-                    reason: cycle.reason,
-                    action: cycle.action,
-                    // Laboratory episodes are never actuated.
-                    outcome: Outcome::NotActed,
+                    obs: *tel,
+                    class: cycle.failure,
+                    annot: RouterAnnot {
+                        verdict: cycle.verdict,
+                        state: cycle.next_state,
+                        reason: cycle.reason,
+                        action: cycle.action,
+                        // Laboratory episodes are never actuated.
+                        outcome: Outcome::NotActed,
+                    },
                     source: Source::Synthetic,
                     // Synthetic frames aren't a live injection; `src=synth` already
                     // sets them apart, so the injection label stays clear.

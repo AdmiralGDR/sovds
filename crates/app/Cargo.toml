@@ -38,6 +38,7 @@ path = "src/bin/inject.rs"
 [dependencies]
 sovereign-core = { path = "../core" }
 sovereign-adapters = { path = "../adapters" }
+sovds = { path = "../sovds" }
 
 [lints]
 workspace = true

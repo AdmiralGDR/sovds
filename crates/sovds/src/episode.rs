@@ -101,6 +101,24 @@ struct Open<D: Domain> {
     injected: Option<D::Fault>,
 }
 
+/// Drive a fresh [`Segmenter`] over a whole chronological record slice and collect
+/// every episode (a convenience over the streaming API; needs `std` for the `Vec`).
+#[cfg(feature = "std")]
+#[must_use]
+pub fn segment<D: Domain>(records: &[Record<D>], cfg: SegConfig) -> Vec<Episode<D>> {
+    let mut seg = Segmenter::new(cfg);
+    let mut out = Vec::new();
+    for r in records {
+        if let Some(ep) = seg.observe(r) {
+            out.push(ep);
+        }
+    }
+    if let Some(ep) = seg.finish() {
+        out.push(ep);
+    }
+    out
+}
+
 /// A streaming segmenter: feed records in chronological (file) order.
 #[derive(Clone, Copy)]
 pub struct Segmenter<D: Domain> {

@@ -17,6 +17,7 @@
 #![forbid(unsafe_code)]
 
 pub mod domain;
+pub mod episode;
 pub mod error;
 pub mod failure;
 pub mod fleet;

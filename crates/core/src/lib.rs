@@ -24,4 +24,5 @@ pub mod fsm;
 pub mod pipeline;
 pub mod ports;
 pub mod record;
+pub mod scenario;
 pub mod stats;

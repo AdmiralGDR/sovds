@@ -32,6 +32,9 @@
 //! * [`episode`] — segment a record stream into fault episodes (the analysis unit).
 //! * [`injection`] — per-window detection + rollback-safety over injected faults.
 //! * [`stats`] — integer fixed-point online estimators (EWMA, one-sided CUSUM).
+//!
+//! Behind the `std` feature (on by default): [`dataset`] (load a corpus),
+//! [`recorder`] (durable rotating append), [`readiness`] (episodes-per-class).
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
 
@@ -40,6 +43,13 @@ pub mod episode;
 pub mod injection;
 pub mod record;
 pub mod stats;
+
+#[cfg(feature = "std")]
+pub mod dataset;
+#[cfg(feature = "std")]
+pub mod readiness;
+#[cfg(feature = "std")]
+pub mod recorder;
 
 #[cfg(test)]
 mod testkit;

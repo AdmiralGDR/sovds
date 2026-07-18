@@ -139,6 +139,7 @@ fn log_step(record: &Record) {
     let verdict = match record.outcome {
         Outcome::Verified => " (verified)",
         Outcome::Unverified => " (UNVERIFIED)",
+        Outcome::Simulated => " (dry-run)",
         Outcome::NotActed => "",
     };
     let source = if record.probed { "ok" } else { "degraded" };

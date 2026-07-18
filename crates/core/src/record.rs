@@ -30,6 +30,12 @@ pub enum Outcome {
     Verified,
     /// An action was attempted but could not be verified.
     Unverified,
+    /// An action was decided but deliberately not issued (observe-only / dry-run).
+    /// Distinct from [`Outcome::NotActed`] (no action was warranted at all) and
+    /// never conflated with [`Outcome::Verified`] — the dataset must not learn that
+    /// a simulated remedy actually took effect (the principle: honest, invalid states
+    /// unrepresentable).
+    Simulated,
 }
 
 /// Where a record came from. The dataset must distinguish observations made by
@@ -266,6 +272,7 @@ const fn outcome_label(o: Outcome) -> &'static str {
         Outcome::NotActed => "-",
         Outcome::Verified => "verified",
         Outcome::Unverified => "unverified",
+        Outcome::Simulated => "dryrun",
     }
 }
 
@@ -548,6 +555,7 @@ fn parse_outcome(value: &str) -> Option<Outcome> {
         "-" => Some(Outcome::NotActed),
         "verified" => Some(Outcome::Verified),
         "unverified" => Some(Outcome::Unverified),
+        "dryrun" => Some(Outcome::Simulated),
         _ => None,
     }
 }
@@ -794,6 +802,20 @@ mod tests {
         let stripped = line.replace(" src=live", "");
         let parsed = parse_record(&stripped)?;
         assert_eq!(parsed.source, Source::Live);
+        Ok(())
+    }
+
+    #[test]
+    fn simulated_outcome_round_trips() -> Result<(), ParseError> {
+        // Observe-only actions must serialize as `dryrun`, never `verified`.
+        let mut r = sample();
+        r.action = Action::SwitchNode;
+        r.outcome = Outcome::Simulated;
+        let mut line = String::new();
+        let _ = write_record(&mut line, &r); // writing to a String cannot fail
+        assert!(line.contains("outcome=dryrun"));
+        assert!(!line.contains("outcome=verified"));
+        assert_eq!(parse_record(&line)?.outcome, Outcome::Simulated);
         Ok(())
     }
 

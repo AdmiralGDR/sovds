@@ -24,23 +24,38 @@ pub trait TelemetrySource {
     fn sample(&self) -> Result<Telemetry, ProbeError>;
 }
 
+/// Whether a remedy was actually carried out on the device, or only simulated.
+///
+/// This distinction is load-bearing for the dataset's honesty (the principle: make the
+/// invalid state — "recorded as verified but never issued" — unrepresentable): an
+/// observe-only run decides real actions but must not claim to have applied them,
+/// or the trail teaches a future model a false action→outcome causality.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Actuation {
+    /// The command was issued to the device and its post-condition verified.
+    Applied,
+    /// Observe-only mode: the remedy was decided but deliberately not issued.
+    Simulated,
+}
+
 /// The ability to apply a remediation and confirm it took effect.
 ///
-/// Actuation must be atomic and self-verifying (the principle: ACID). An `Ok` means
-/// the post-condition was checked — not merely that a command was sent. On any
-/// doubt the implementation returns [`ActError::Unverified`] so the caller treats
-/// the change as not applied.
+/// Actuation must be atomic and self-verifying (the principle: ACID). An
+/// `Ok(Actuation::Applied)` means the post-condition was checked — not merely that
+/// a command was sent; an `Ok(Actuation::Simulated)` means observe-only, nothing
+/// was issued. On any doubt the implementation returns [`ActError::Unverified`] so
+/// the caller treats the change as not applied.
 pub trait Actuator {
     /// Select a different exit node, avoiding the one that just failed.
-    fn switch_node(&self, avoid: NodeId) -> Result<(), ActError>;
+    fn switch_node(&self, avoid: NodeId) -> Result<Actuation, ActError>;
     /// Restart the tunnel process and verify it comes back up.
-    fn restart_singbox(&self) -> Result<(), ActError>;
+    fn restart_singbox(&self) -> Result<Actuation, ActError>;
     /// Bounce the WAN interface and verify the link re-establishes.
-    fn bounce_wan(&self) -> Result<(), ActError>;
+    fn bounce_wan(&self) -> Result<Actuation, ActError>;
     /// Cut over to the backup uplink and verify reachability through it.
-    fn failover_backup(&self) -> Result<(), ActError>;
+    fn failover_backup(&self) -> Result<Actuation, ActError>;
     /// Reboot the device. Terminal remedy; verification is post-boot.
-    fn reboot(&self) -> Result<(), ActError>;
+    fn reboot(&self) -> Result<Actuation, ActError>;
 }
 
 /// A channel for human-legible notifications.

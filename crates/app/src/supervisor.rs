@@ -13,7 +13,7 @@ use sovereign_core::error::ActError;
 use sovereign_core::fleet::{Fleet, FleetConfig};
 use sovereign_core::fsm::{Action, Config, Reason, State};
 use sovereign_core::pipeline::decide_cycle;
-use sovereign_core::ports::{Actuator, Notifier, TelemetrySource};
+use sovereign_core::ports::{Actuation, Actuator, Notifier, TelemetrySource};
 use sovereign_core::record::{Outcome, Record, Source};
 use std::time::Duration;
 
@@ -74,7 +74,10 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
 
         let outcome = match self.apply(cycle.action) {
             None => Outcome::NotActed,
-            Some(Ok(())) => Outcome::Verified,
+            Some(Ok(Actuation::Applied)) => Outcome::Verified,
+            // Observe-only: the action was decided but never issued — record it as
+            // such, never as a verified actuation the dataset would trust.
+            Some(Ok(Actuation::Simulated)) => Outcome::Simulated,
             Some(Err(_)) => Outcome::Unverified,
         };
 
@@ -102,7 +105,7 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
         }
     }
 
-    fn apply(&self, action: Action) -> Option<Result<(), ActError>> {
+    fn apply(&self, action: Action) -> Option<Result<Actuation, ActError>> {
         match action {
             Action::Observe => None,
             Action::SwitchNode => Some(self.actuator.switch_node(NodeId(0))),
@@ -179,7 +182,7 @@ mod tests {
     use sovereign_core::fleet::FleetConfig;
     use sovereign_core::fsm::Reason;
     use sovereign_core::fsm::{Action, Config, State};
-    use sovereign_core::ports::{Actuator, Notifier, TelemetrySource};
+    use sovereign_core::ports::{Actuation, Actuator, Notifier, TelemetrySource};
     use sovereign_core::record::Outcome;
     use std::cell::Cell;
     use std::time::Duration;
@@ -235,24 +238,26 @@ mod tests {
         switches: Cell<u32>,
         bounces: Cell<u32>,
     }
+    // Represents a real, live actuator: it "applies" each remedy, so the outcome
+    // is Verified — the counterpart to NullActuator's Simulated.
     impl Actuator for RecordingActuator {
-        fn switch_node(&self, _avoid: NodeId) -> Result<(), ActError> {
+        fn switch_node(&self, _avoid: NodeId) -> Result<Actuation, ActError> {
             self.switches.set(self.switches.get().saturating_add(1));
-            Ok(())
+            Ok(Actuation::Applied)
         }
-        fn restart_singbox(&self) -> Result<(), ActError> {
+        fn restart_singbox(&self) -> Result<Actuation, ActError> {
             self.restarts.set(self.restarts.get().saturating_add(1));
-            Ok(())
+            Ok(Actuation::Applied)
         }
-        fn bounce_wan(&self) -> Result<(), ActError> {
+        fn bounce_wan(&self) -> Result<Actuation, ActError> {
             self.bounces.set(self.bounces.get().saturating_add(1));
-            Ok(())
+            Ok(Actuation::Applied)
         }
-        fn failover_backup(&self) -> Result<(), ActError> {
-            Ok(())
+        fn failover_backup(&self) -> Result<Actuation, ActError> {
+            Ok(Actuation::Applied)
         }
-        fn reboot(&self) -> Result<(), ActError> {
-            Ok(())
+        fn reboot(&self) -> Result<Actuation, ActError> {
+            Ok(Actuation::Applied)
         }
     }
 

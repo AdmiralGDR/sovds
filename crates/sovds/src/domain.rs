@@ -48,7 +48,11 @@ pub enum Accept {
 ///
 /// Implementations are pure and allocation-free — no clock, no I/O (the principle). The
 /// toolkit drives them; they never reach outward themselves.
-pub trait Domain {
+///
+/// The domain type itself is a zero-size tag; the supertraits (`Copy + Eq +
+/// Debug`) are what let [`crate::Record<D>`](crate::Record) derive its own — trivial
+/// to satisfy with `#[derive(Debug, Clone, Copy, PartialEq, Eq)]` on the marker.
+pub trait Domain: Copy + Eq + core::fmt::Debug {
     /// One observation of the system (its telemetry). `Copy` and heap-free so a
     /// record stays a plain value.
     type Obs: Copy + PartialEq;
@@ -115,6 +119,7 @@ mod tests {
         Overloaded,
     }
 
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     struct Svc;
 
     #[derive(Default)]

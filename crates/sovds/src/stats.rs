@@ -66,7 +66,7 @@ impl Ewma {
 
 /// One-sided CUSUM change detector for an *upward* shift.
 ///
-/// This is the detector for the "works then dies" throttle: latency steps up and
+/// This is the detector for the "works then dies" throttle: a value steps up and
 /// stays up. CUSUM accumulates how far samples run above their expected mean
 /// (beyond a noise slack `k`) and alarms once that accumulation crosses `h`. It
 /// reacts to a sustained shift far faster than a fixed threshold, and needs no
@@ -83,12 +83,12 @@ pub struct Cusum {
     /// Upper bound on `sum`, fixed-point. Without it, a long or large upward
     /// excursion winds the accumulator up without limit, and it then takes just as
     /// many below-baseline samples to unwind — so the alarm *latches* long after
-    /// the signal has recovered (measured on real data: a fast path, latency well
-    /// under baseline, still read `throttled`/`node_degraded` for 30+ cycles). A
-    /// bounded CUSUM caps the wind-up at one extra threshold above the alarm line,
-    /// so recovery drains the alarm within a couple of samples. It does not change
-    /// *detection* — `sum` still crosses `threshold` on exactly the same sample —
-    /// only how promptly the alarm clears afterwards (the principle: bounded state).
+    /// the signal has recovered (measured on real data: a fast path, value well
+    /// under baseline, still read alarmed for 30+ cycles). A bounded CUSUM caps the
+    /// wind-up at one extra threshold above the alarm line, so recovery drains the
+    /// alarm within a couple of samples. It does not change *detection* — `sum`
+    /// still crosses `threshold` on exactly the same sample — only how promptly the
+    /// alarm clears afterwards (the principle: bounded state).
     ceiling: i64,
 }
 

@@ -1,0 +1,25 @@
+[package]
+name = "sovds"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96.1"
+description = "Sovereign Dataset Toolkit — build labelled ground-truth datasets from live systems via safe controlled fault injection and telemetry. Domain-agnostic, zero-dependency, no_std core."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/dev42/sovereign"
+keywords = ["dataset", "telemetry", "fault-injection", "observability", "no_std"]
+categories = ["no-std", "development-tools", "science"]
+
+[features]
+# The library is a no_std, zero-dependency core by default (the principle: agnostic
+# core). The `std` feature turns on the on-disk edges — loading a corpus, the
+# rotating recorder — for the offline tools that run on a real machine.
+default = ["std"]
+std = []
+
+[dependencies]
+# Intentionally empty and it must stay that way (the internal engineering charter, the principle & I): a
+# dataset toolkit that a third party embeds must not drag transitive dependencies
+# into their tree, and must compile offline from a pinned toolchain in ten years.
+
+[lints]
+workspace = true

@@ -14,7 +14,7 @@
 use crate::os::{CommandRunner, RunError};
 use crate::ssh::SshExec;
 use sovereign_core::domain::{
-    Dns, LatencyMs, NodeHealth, NodeId, Proc, Telemetry, Tunnel, Wan, MAX_NODES,
+    Aux, Dns, LatencyMs, NodeHealth, NodeId, Proc, Telemetry, Tunnel, Wan, WanReach, MAX_NODES,
 };
 use sovereign_core::error::ProbeError;
 use sovereign_core::ports::TelemetrySource;
@@ -37,13 +37,20 @@ if [ -n "$D" ]; then echo "tunnel=ok:$D"; else echo "tunnel=dead"; fi
 G=$(curl -s -m 8 -H "Authorization: Bearer $S" "http://192.168.1.1:9090/group/vless_out-out/delay?url=http://cp.cloudflare.com/generate_204&timeout=6000" 2>/dev/null)
 echo "$G" | tr ',{}' '\n' | sed -n 's/.*"vless_out-\([0-9][0-9]*\)-out": *\([0-9][0-9]*\).*/node=\1:\2/p'
 if nslookup youtube.com 127.0.0.1 2>/dev/null | grep -qE 'Address[0-9]*: *198\.1[89]\.'; then echo "dns=ok"; else echo "dns=failing"; fi
+if curl -s -o /dev/null -m 5 http://1.1.1.1 2>/dev/null || curl -s -o /dev/null -m 5 http://8.8.8.8 2>/dev/null; then echo "wanok=1"; else echo "wanok=0"; fi
+awk '{ printf "load=%d\n", $1 * 100 }' /proc/loadavg 2>/dev/null
+awk '/MemAvailable/ { printf "mem=%d\n", $2 }' /proc/meminfo 2>/dev/null
+A=$(curl -s -m 8 -H "Authorization: Bearer $S" "http://192.168.1.1:9090/proxies/vless_out-urltest-out" 2>/dev/null | sed -n 's/.*"now": *"vless_out-\([0-9][0-9]*\)-out".*/\1/p')
+[ -n "$A" ] && echo "active=$A"
 "#;
 
 /// Parse the router's telemetry contract into a validated [`Telemetry`].
 ///
 /// The four core signals (`wan`, `singbox`, `tunnel`, `dns`) are mandatory; a
 /// missing or unrecognised one is a hostile/garbled input and is rejected.
-/// `node=<id>:<latency>` lines are optional and bounded by [`MAX_NODES`].
+/// `node=<id>:<latency>` lines are optional and bounded by [`MAX_NODES`];
+/// auxiliary keys (`wanok`, `load`, `mem`, `active`) are optional too — a probe
+/// that failed to measure them simply omits them, and they parse to "unknown".
 pub fn parse_snapshot(text: &str) -> Result<Telemetry, ProbeError> {
     let mut wan: Option<Wan> = None;
     let mut singbox: Option<Proc> = None;
@@ -51,6 +58,7 @@ pub fn parse_snapshot(text: &str) -> Result<Telemetry, ProbeError> {
     let mut dns: Option<Dns> = None;
     let mut nodes: [Option<NodeHealth>; MAX_NODES] = [None; MAX_NODES];
     let mut node_slot: usize = 0;
+    let mut aux = Aux::UNKNOWN;
 
     for raw in text.lines() {
         let line = raw.trim();
@@ -72,6 +80,20 @@ pub fn parse_snapshot(text: &str) -> Result<Telemetry, ProbeError> {
                 // Nodes beyond MAX_NODES are dropped: the core reasons about a
                 // bounded set (the principle), and extra measurements are not fatal.
             }
+            "wanok" => {
+                aux.wan_reach = match value {
+                    "1" => WanReach::Ok,
+                    "0" => WanReach::Blackhole,
+                    _ => return Err(ProbeError::Malformed),
+                }
+            }
+            "load" => {
+                aux.load_centi = Some(value.parse::<u32>().map_err(|_| ProbeError::Malformed)?)
+            }
+            "mem" => {
+                aux.mem_free_kb = Some(value.parse::<u32>().map_err(|_| ProbeError::Malformed)?)
+            }
+            "active" => aux.active = Some(value.parse::<u8>().map_err(|_| ProbeError::Malformed)?),
             _ => return Err(ProbeError::Malformed),
         }
     }
@@ -83,6 +105,7 @@ pub fn parse_snapshot(text: &str) -> Result<Telemetry, ProbeError> {
             tunnel,
             dns,
             nodes,
+            aux,
         }),
         _ => Err(ProbeError::Malformed),
     }
@@ -179,7 +202,7 @@ impl<R: CommandRunner> TelemetrySource for SshTelemetry<'_, R> {
 #[cfg(test)]
 mod tests {
     use super::parse_snapshot;
-    use sovereign_core::domain::{Dns, LatencyMs, Proc, Tunnel, Wan};
+    use sovereign_core::domain::{Aux, Dns, LatencyMs, Proc, Tunnel, Wan, WanReach};
     use sovereign_core::error::ProbeError;
 
     const GOOD: &str = "wan=up:12345\nsingbox=running\ntunnel=ok:439\ndns=ok\n";
@@ -196,7 +219,28 @@ mod tests {
             }
         );
         assert_eq!(t.dns, Dns::Ok);
+        // No aux tokens in the snapshot -> everything reads "not measured".
+        assert_eq!(t.aux, Aux::UNKNOWN);
         Ok(())
+    }
+
+    #[test]
+    fn parses_auxiliary_signals() -> Result<(), ProbeError> {
+        let text = format!("{GOOD}wanok=1\nload=42\nmem=151204\nactive=4\n");
+        let t = parse_snapshot(&text)?;
+        assert_eq!(t.aux.wan_reach, WanReach::Ok);
+        assert_eq!(t.aux.load_centi, Some(42));
+        assert_eq!(t.aux.mem_free_kb, Some(151_204));
+        assert_eq!(t.aux.active, Some(4));
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_garbled_auxiliary_values() {
+        for bad in ["wanok=perhaps", "load=heavy", "mem=lots", "active=abc"] {
+            let text = format!("{GOOD}{bad}\n");
+            assert_eq!(parse_snapshot(&text), Err(ProbeError::Malformed), "{bad}");
+        }
     }
 
     #[test]

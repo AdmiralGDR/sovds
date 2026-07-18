@@ -8,7 +8,7 @@
 //! never a crash) and **bounded execution** (each cycle does a fixed amount of
 //! timeout-guarded work and the loop can be capped).
 
-use sovereign_core::domain::{Dns, NodeId, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES};
+use sovereign_core::domain::{Aux, Dns, NodeId, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES};
 use sovereign_core::error::ActError;
 use sovereign_core::fleet::{Fleet, FleetConfig};
 use sovereign_core::fsm::{Action, Config, Reason, State};
@@ -157,6 +157,7 @@ fn all_unknown() -> Telemetry {
         tunnel: Tunnel::Unknown,
         dns: Dns::Unknown,
         nodes: [None; MAX_NODES],
+        aux: Aux::UNKNOWN,
     }
 }
 
@@ -173,7 +174,7 @@ fn is_notable(reason: Reason) -> bool {
 mod tests {
     use super::Supervisor;
     use sovereign_core::domain::NodeId;
-    use sovereign_core::domain::{Dns, LatencyMs, Proc, Telemetry, Tunnel, Wan, MAX_NODES};
+    use sovereign_core::domain::{Aux, Dns, LatencyMs, Proc, Telemetry, Tunnel, Wan, MAX_NODES};
     use sovereign_core::error::{ActError, ProbeError};
     use sovereign_core::fleet::FleetConfig;
     use sovereign_core::fsm::Reason;
@@ -192,6 +193,7 @@ mod tests {
             },
             dns: Dns::Ok,
             nodes: [None; MAX_NODES],
+            aux: Aux::UNKNOWN,
         }
     }
 

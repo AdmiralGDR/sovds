@@ -111,7 +111,7 @@ pub fn confirm_drained<R: CommandRunner>(ssh: &SshExec<'_, R>) -> Result<(), Run
 #[cfg(test)]
 mod tests {
     use super::{dedupe, parse_buffer_line, Sample, DEDUP_WINDOW_S};
-    use sovereign_core::domain::{Dns, LatencyMs, Proc, Telemetry, Tunnel, Wan, MAX_NODES};
+    use sovereign_core::domain::{Aux, Dns, LatencyMs, Proc, Telemetry, Tunnel, Wan, MAX_NODES};
     use sovereign_core::error::ProbeError;
 
     const LINE: &str =
@@ -128,6 +128,7 @@ mod tests {
                 },
                 dns: Dns::Ok,
                 nodes: [None; MAX_NODES],
+                aux: Aux::UNKNOWN,
             },
         }
     }

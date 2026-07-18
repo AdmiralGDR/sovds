@@ -267,7 +267,7 @@ fn on_cooldown(
 #[cfg(test)]
 mod tests {
     use super::{decide, Action, Config, Reason, State, Transition};
-    use crate::domain::{Dns, LatencyMs, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES};
+    use crate::domain::{Aux, Dns, LatencyMs, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES};
     use crate::failure::{classify, FailureClass};
 
     fn cfg() -> Config {
@@ -287,6 +287,7 @@ mod tests {
             },
             dns: Dns::Ok,
             nodes: [None; MAX_NODES],
+            aux: Aux::UNKNOWN,
         }
     }
 

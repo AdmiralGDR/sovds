@@ -61,7 +61,9 @@ pub fn load(path: &Path, generations: u32) -> Corpus {
 mod tests {
     use super::load;
     use crate::recorder::FileRecorder;
-    use sovereign_core::domain::{Dns, LatencyMs, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES};
+    use sovereign_core::domain::{
+        Aux, Dns, LatencyMs, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES,
+    };
     use sovereign_core::failure::FailureClass;
     use sovereign_core::fleet::NodeVerdict;
     use sovereign_core::fsm::{Action, Reason, State};
@@ -81,6 +83,7 @@ mod tests {
                 },
                 dns: Dns::Ok,
                 nodes: [None; MAX_NODES],
+                aux: Aux::UNKNOWN,
             },
             path_verdict: NodeVerdict::Healthy,
             failure: FailureClass::None,

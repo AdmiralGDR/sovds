@@ -13,7 +13,8 @@
 //! touches I/O (the principle).
 
 use crate::domain::{
-    Dns, LatencyMs, NodeHealth, NodeId, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES,
+    Aux, Dns, LatencyMs, NodeHealth, NodeId, Proc, Telemetry, Tick, Tunnel, Wan, WanReach,
+    MAX_NODES,
 };
 use crate::failure::FailureClass;
 use crate::fleet::NodeVerdict;
@@ -89,6 +90,7 @@ pub fn write_record<W: Write>(w: &mut W, r: &Record) -> core::fmt::Result {
     w.write_str(dns_label(r.telemetry.dns))?;
     w.write_str(" nodes=")?;
     write_nodes(w, &r.telemetry.nodes)?;
+    write_aux(w, &r.telemetry.aux)?;
     w.write_str(" verdict=")?;
     w.write_str(verdict_label(r.path_verdict))?;
     w.write_str(" class=")?;
@@ -140,6 +142,29 @@ fn write_tunnel<W: Write>(w: &mut W, tunnel: Tunnel) -> core::fmt::Result {
         Tunnel::Degraded { latency } => write!(w, "deg:{}", latency.0),
         Tunnel::Dead => w.write_str("dead"),
         Tunnel::Unknown => w.write_str("unknown"),
+    }
+}
+
+/// Serialize the auxiliary signals; `-` uniformly encodes "not measured", so the
+/// line always carries every key (deterministic layout, the principle) while old
+/// readers of the values stay trivial.
+fn write_aux<W: Write>(w: &mut W, aux: &Aux) -> core::fmt::Result {
+    match aux.wan_reach {
+        WanReach::Ok => w.write_str(" wanok=1")?,
+        WanReach::Blackhole => w.write_str(" wanok=0")?,
+        WanReach::Unknown => w.write_str(" wanok=-")?,
+    }
+    match aux.load_centi {
+        Some(v) => write!(w, " load={v}")?,
+        None => w.write_str(" load=-")?,
+    }
+    match aux.mem_free_kb {
+        Some(v) => write!(w, " mem={v}")?,
+        None => w.write_str(" mem=-")?,
+    }
+    match aux.active {
+        Some(v) => write!(w, " active={v}"),
+        None => w.write_str(" active=-"),
     }
 }
 
@@ -287,6 +312,8 @@ pub fn parse_record(line: &str) -> Result<Record, ParseError> {
     let mut wall_time: u64 = 0;
     // Optional: records written before provenance existed default to Live.
     let mut source = Source::Live;
+    // Optional: records written before auxiliary signals parse as UNKNOWN.
+    let mut aux = Aux::UNKNOWN;
 
     for token in line.split_whitespace() {
         let (key, value) = token.split_once('=').ok_or(ParseError::BadField)?;
@@ -306,6 +333,10 @@ pub fn parse_record(line: &str) -> Result<Record, ParseError> {
             "action" => action = Some(parse_action(value).ok_or(ParseError::BadField)?),
             "outcome" => outcome = Some(parse_outcome(value).ok_or(ParseError::BadField)?),
             "src" => source = parse_source(value).ok_or(ParseError::BadField)?,
+            "wanok" => aux.wan_reach = parse_wanok(value)?,
+            "load" => aux.load_centi = parse_opt_u32(value)?,
+            "mem" => aux.mem_free_kb = parse_opt_u32(value)?,
+            "active" => aux.active = parse_opt_u8(value)?,
             _ => return Err(ParseError::UnknownKey),
         }
     }
@@ -320,6 +351,7 @@ pub fn parse_record(line: &str) -> Result<Record, ParseError> {
             tunnel: tunnel.ok_or(ParseError::MissingField)?,
             dns: dns.ok_or(ParseError::MissingField)?,
             nodes,
+            aux,
         },
         path_verdict: verdict.ok_or(ParseError::MissingField)?,
         failure: failure.ok_or(ParseError::MissingField)?,
@@ -523,6 +555,35 @@ fn parse_source(value: &str) -> Option<Source> {
     }
 }
 
+fn parse_wanok(value: &str) -> Result<WanReach, ParseError> {
+    match value {
+        "1" => Ok(WanReach::Ok),
+        "0" => Ok(WanReach::Blackhole),
+        "-" => Ok(WanReach::Unknown),
+        _ => Err(ParseError::BadField),
+    }
+}
+
+fn parse_opt_u32(value: &str) -> Result<Option<u32>, ParseError> {
+    match value {
+        "-" => Ok(None),
+        other => other
+            .parse::<u32>()
+            .map(Some)
+            .map_err(|_| ParseError::BadField),
+    }
+}
+
+fn parse_opt_u8(value: &str) -> Result<Option<u8>, ParseError> {
+    match value {
+        "-" => Ok(None),
+        other => other
+            .parse::<u8>()
+            .map(Some)
+            .map_err(|_| ParseError::BadField),
+    }
+}
+
 /// Parse the `nodes=` field (`id:lat` / `id:x`, comma-separated, or `-`) back into
 /// a bounded table, filled in the order given. Entries past [`MAX_NODES`] are
 /// dropped rather than failing (the principle: bounded, tolerant).
@@ -551,7 +612,8 @@ fn parse_nodes(value: &str) -> Result<[Option<NodeHealth>; MAX_NODES], ParseErro
 mod tests {
     use super::{parse_record, write_record, Outcome, ParseError, Record, Source};
     use crate::domain::{
-        Dns, LatencyMs, NodeHealth, NodeId, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES,
+        Aux, Dns, LatencyMs, NodeHealth, NodeId, Proc, Telemetry, Tick, Tunnel, Wan, WanReach,
+        MAX_NODES,
     };
     use crate::failure::FailureClass;
     use crate::fleet::NodeVerdict;
@@ -570,6 +632,7 @@ mod tests {
                 },
                 dns: Dns::Ok,
                 nodes: [None; MAX_NODES],
+                aux: Aux::UNKNOWN,
             },
             path_verdict: NodeVerdict::Healthy,
             failure: FailureClass::None,
@@ -683,6 +746,13 @@ mod tests {
         suspect.reason = Reason::FirstSuspicion(FailureClass::SingboxDead);
         // Provenance must round-trip too.
         suspect.source = Source::Backfill;
+        // Auxiliary signals must round-trip too (fully populated on this case).
+        suspect.telemetry.aux = Aux {
+            wan_reach: WanReach::Blackhole,
+            load_centi: Some(37),
+            mem_free_kb: Some(151_204),
+            active: Some(4),
+        };
 
         for original in [sample(), cooldown, suspect] {
             let mut line = String::new();
@@ -719,5 +789,27 @@ mod tests {
         let parsed = parse_record(&stripped)?;
         assert_eq!(parsed.source, Source::Live);
         Ok(())
+    }
+
+    #[test]
+    fn records_without_aux_parse_as_unknown() -> Result<(), ParseError> {
+        // Backward compatibility: pre-aux records omit all four aux keys.
+        let mut line = String::new();
+        let _ = write_record(&mut line, &sample());
+        let stripped = line
+            .replace(" wanok=-", "")
+            .replace(" load=-", "")
+            .replace(" mem=-", "")
+            .replace(" active=-", "");
+        let parsed = parse_record(&stripped)?;
+        assert_eq!(parsed.telemetry.aux, Aux::UNKNOWN);
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_garbled_aux_values() {
+        assert_eq!(parse_record("t=1 wanok=maybe"), Err(ParseError::BadField));
+        assert_eq!(parse_record("t=1 load=heavy"), Err(ParseError::BadField));
+        assert_eq!(parse_record("t=1 active=999"), Err(ParseError::BadField));
     }
 }

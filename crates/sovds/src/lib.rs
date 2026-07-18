@@ -30,12 +30,14 @@
 //! * [`domain`] — the [`Domain`] trait a caller implements to plug in their system.
 //! * [`record`] — the generic dataset record and its serialisation.
 //! * [`episode`] — segment a record stream into fault episodes (the analysis unit).
+//! * [`injection`] — per-window detection + rollback-safety over injected faults.
 //! * [`stats`] — integer fixed-point online estimators (EWMA, one-sided CUSUM).
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
 
 pub mod domain;
 pub mod episode;
+pub mod injection;
 pub mod record;
 pub mod stats;
 

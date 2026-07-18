@@ -53,13 +53,16 @@ pub enum Accept {
 /// Debug`) are what let [`crate::Record<D>`](crate::Record) derive its own — trivial
 /// to satisfy with `#[derive(Debug, Clone, Copy, PartialEq, Eq)]` on the marker.
 pub trait Domain: Copy + Eq + core::fmt::Debug {
+    // The associated types are `'static`: a dataset record is owned, self-contained
+    // data (it is parsed from a line and stored), never a borrow into something
+    // else. This also lets metrics return the fault type by value freely.
     /// One observation of the system (its telemetry). `Copy` and heap-free so a
     /// record stays a plain value.
-    type Obs: Copy + PartialEq;
+    type Obs: Copy + PartialEq + 'static;
     /// The fault vocabulary — the label space a record classifies into.
-    type Fault: Copy + PartialEq;
+    type Fault: Copy + PartialEq + 'static;
     /// Domain-specific extras carried per record (e.g. a supervisor's decision).
-    type Annot: Copy + PartialEq;
+    type Annot: Copy + PartialEq + 'static;
     /// A zero-alloc accumulator that folds parsed tokens into an `Obs`+`Annot`.
     type Builder: Default;
 

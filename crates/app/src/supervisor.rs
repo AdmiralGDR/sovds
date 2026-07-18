@@ -14,7 +14,7 @@ use sovereign_core::fleet::{Fleet, FleetConfig};
 use sovereign_core::fsm::{Action, Config, Reason, State};
 use sovereign_core::pipeline::decide_cycle;
 use sovereign_core::ports::{Actuation, Actuator, Notifier, TelemetrySource};
-use sovereign_core::record::{Outcome, Record, Source};
+use sovereign_core::record::{Outcome, Record, RouterAnnot, Source};
 use std::time::Duration;
 
 /// Ties the core state machine to its ports. Holds the only mutable state in the
@@ -94,13 +94,15 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
             tick: now,
             wall_time: now_unix,
             probed,
-            telemetry: observed,
-            path_verdict: cycle.verdict,
-            failure: cycle.failure,
-            state: cycle.next_state,
-            reason: cycle.reason,
-            action: cycle.action,
-            outcome,
+            obs: observed,
+            class: cycle.failure,
+            annot: RouterAnnot {
+                verdict: cycle.verdict,
+                state: cycle.next_state,
+                reason: cycle.reason,
+                action: cycle.action,
+                outcome,
+            },
             source: Source::Live,
             // Ground truth: whether this cycle's fault was one we injected.
             label: injected,
@@ -302,14 +304,14 @@ mod tests {
         );
 
         let r0 = sup.step(0);
-        assert_eq!(r0.action, Action::Observe, "never act on first sight");
+        assert_eq!(r0.annot.action, Action::Observe, "never act on first sight");
         let r1 = sup.step(0);
-        assert_eq!(r1.action, Action::RestartSingbox);
-        assert_eq!(r1.outcome, Outcome::Verified);
+        assert_eq!(r1.annot.action, Action::RestartSingbox);
+        assert_eq!(r1.annot.outcome, Outcome::Verified);
         let r2 = sup.step(0);
-        assert_eq!(r2.action, Action::Observe, "cooldown holds");
+        assert_eq!(r2.annot.action, Action::Observe, "cooldown holds");
         let r3 = sup.step(0);
-        assert_eq!(r3.reason, Reason::Recovered);
+        assert_eq!(r3.annot.reason, Reason::Recovered);
         assert_eq!(sup.state(), State::Healthy);
     }
 
@@ -336,7 +338,7 @@ mod tests {
 
         let mut switched = false;
         for _ in 0..9 {
-            if sup.step(0).action == Action::SwitchNode {
+            if sup.step(0).annot.action == Action::SwitchNode {
                 switched = true;
             }
         }
@@ -361,7 +363,7 @@ mod tests {
         );
         let r = sup.step(0);
         assert!(!r.probed);
-        assert_eq!(r.action, Action::Observe);
+        assert_eq!(r.annot.action, Action::Observe);
         assert_eq!(sup.state(), State::Healthy);
     }
 

@@ -12,6 +12,7 @@ publish = false
 # reached only through the OS itself (std + the `ssh`/`curl` binaries), never
 # through a crate that could rot or be compromised.
 sovereign-core = { path = "../core" }
+sovds = { path = "../sovds" }
 
 [lints]
 workspace = true

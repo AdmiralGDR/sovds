@@ -136,7 +136,7 @@ fn apply_args<I: Iterator<Item = String>>(cfg: &mut AppConfig, mut args: I) {
 
 /// One line per cycle, on stderr, in a log-friendly shape.
 fn log_step(record: &Record) {
-    let verdict = match record.outcome {
+    let verdict = match record.annot.outcome {
         Outcome::Verified => " (verified)",
         Outcome::Unverified => " (UNVERIFIED)",
         Outcome::Simulated => " (dry-run)",
@@ -145,6 +145,6 @@ fn log_step(record: &Record) {
     let source = if record.probed { "ok" } else { "degraded" };
     eprintln!(
         "  [{source}] {:?} -> {:?}{verdict}",
-        record.reason, record.action
+        record.annot.reason, record.annot.action
     );
 }

@@ -86,7 +86,7 @@ pub fn summarize(records: &[Record]) -> Summary {
         FailureClass::NodeDegraded,
         FailureClass::DnsFail,
     ]
-    .map(|kind| (kind, records.iter().filter(|r| r.failure == kind).count()));
+    .map(|kind| (kind, records.iter().filter(|r| r.class == kind).count()));
 
     let actions = [
         Action::Observe,
@@ -96,11 +96,11 @@ pub fn summarize(records: &[Record]) -> Summary {
         Action::FailoverBackup,
         Action::Reboot,
     ]
-    .map(|kind| (kind, records.iter().filter(|r| r.action == kind).count()));
+    .map(|kind| (kind, records.iter().filter(|r| r.annot.action == kind).count()));
 
     let mut path_latencies: Vec<u32> = Vec::new();
     for record in records {
-        if let sovereign_core::domain::Tunnel::Healthy { latency } = record.telemetry.tunnel {
+        if let sovereign_core::domain::Tunnel::Healthy { latency } = record.obs.tunnel {
             path_latencies.push(latency.0);
         }
     }
@@ -126,7 +126,7 @@ fn per_node_stats(records: &[Record]) -> Vec<NodeStat> {
     let mut latencies: [Vec<u32>; MAX_NODES] = core::array::from_fn(|_| Vec::new());
 
     for record in records {
-        for node in record.telemetry.nodes.iter().flatten() {
+        for node in record.obs.nodes.iter().flatten() {
             let idx = usize::from(node.id.0);
             if let Some(count) = seen.get_mut(idx) {
                 *count = count.saturating_add(1);
@@ -336,7 +336,7 @@ mod tests {
             tick: Tick(tick),
             wall_time: 1_700_000_000_u64.saturating_add(tick),
             probed: true,
-            telemetry: Telemetry {
+            obs: Telemetry {
                 wan: Wan::Up { uptime_s: 1 },
                 singbox: Proc::Running,
                 tunnel: Tunnel::Healthy {
@@ -346,12 +346,14 @@ mod tests {
                 nodes: [None; MAX_NODES],
                 aux: Aux::UNKNOWN,
             },
-            path_verdict: NodeVerdict::Healthy,
-            failure,
-            state: State::Healthy,
-            reason: Reason::Nominal,
-            action: Action::Observe,
-            outcome: Outcome::NotActed,
+            class: failure,
+            annot: sovereign_core::record::RouterAnnot {
+                verdict: NodeVerdict::Healthy,
+                state: State::Healthy,
+                reason: Reason::Nominal,
+                action: Action::Observe,
+                outcome: Outcome::NotActed,
+            },
             source: Source::Live,
             label: None,
         }

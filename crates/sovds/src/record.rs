@@ -20,6 +20,15 @@ use core::fmt::Write;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Tick(pub u64);
 
+impl Tick {
+    /// Advance by `n` ticks, saturating instead of overflowing so logical time is
+    /// always well defined (the principle: no undefined arithmetic).
+    #[must_use]
+    pub const fn saturating_add(self, n: u64) -> Self {
+        Self(self.0.saturating_add(n))
+    }
+}
+
 /// Where a record came from. Analysis must distinguish observations made live from
 /// ones recovered later, and from deliberately synthetic ones (the principle: the data
 /// carries its own provenance).

@@ -73,7 +73,7 @@ fn replay(records: &[Record], core: Config, fleet_cfg: FleetConfig) -> Tally {
             fleet = Fleet::new(fleet_cfg);
             state = State::Healthy;
         }
-        let cycle = decide_cycle(state, &mut fleet, &record.telemetry, &core, record.tick);
+        let cycle = decide_cycle(state, &mut fleet, &record.obs, &core, record.tick);
         state = cycle.next_state;
         tally.total = tally.total.saturating_add(1);
         tally.record_action(cycle.action);

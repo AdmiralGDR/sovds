@@ -17,7 +17,6 @@
 #![forbid(unsafe_code)]
 
 pub mod domain;
-pub mod episode;
 pub mod error;
 pub mod failure;
 pub mod fleet;
@@ -25,8 +24,11 @@ pub mod fsm;
 pub mod pipeline;
 pub mod ports;
 pub mod record;
+pub mod routerdomain;
 pub mod scenario;
 
-/// Online statistics (EWMA, one-sided CUSUM) now live in the `sovds` toolkit;
-/// re-exported here so existing `crate::stats` paths keep working unchanged.
+/// Generic dataset machinery now lives in the `sovds` toolkit; re-exported here so
+/// existing `crate::{stats,episode}` paths keep working unchanged over the router
+/// domain.
 pub use sovds::stats;
+pub use sovds::episode;

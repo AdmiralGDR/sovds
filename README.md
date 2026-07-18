@@ -80,6 +80,32 @@ cargo clippy --all-targets -- -D warnings   # warnings are errors
 cargo test --all                 # deterministic unit tests
 ```
 
+## Tools
+
+- `sovereign-inspect [log]` — dataset metrics (class balance, latency distribution).
+- `sovereign-replay` — replay the corpus under different adaptive configs (tuning
+  as measurement, not guesswork).
+- `sovereign-backfill` — loss-free drain of the router's fallback buffer.
+- `sovereign-scenario` — replay the **canonical fault-scenario suite** through the
+  live decision pipeline and print a per-class accuracy matrix. This reaches the
+  parts of the decision space passive observation never will: `wan_down`,
+  `singbox_dead` and `dns_fail` have ~zero real samples, so this is the only way to
+  know the rules would diagnose them. It touches nothing on the router — the
+  episodes are deterministic laboratory telemetry. `--trace <name>` dumps a scenario
+  frame by frame; `--seed <path>` writes the frames as `src=synth` records to a
+  *separate* file (the observed dataset stays pure).
+
+Two findings the suite surfaced, both pinned as tests and left for separate,
+data-driven fixes (the principle — decisions change by evidence, not on a whim):
+
+1. **WAN blackhole is invisible.** A session that is up but blackholed (`wanok=0`)
+   scores 0% — `classify` does not yet read `wan_reach`. The aux signal exists; the
+   rule to act on it does not.
+2. **Adaptive recovery lag.** After a sustained slow-down raises a node's learned
+   baseline, the CUSUM throttle alarm latches: the supervisor keeps diagnosing
+   `node_degraded` and fires a remedy once *after* the path has fully recovered.
+   Warmup stays clean — this is lingering suspicion, not a cold-start false positive.
+
 ## Language split (where Zig is rational)
 
 Rust owns the brain: its type system is what makes "invalid states won't

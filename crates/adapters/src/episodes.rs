@@ -299,6 +299,37 @@ mod tests {
     }
 
     #[test]
+    fn injection_accuracy_scores_each_class_independently() {
+        use super::injection_accuracy;
+        // A mixed autonomous run: singbox_dead injected twice (both detected) and
+        // dns_fail injected twice (one detected, one a dry-run miss). Each class is
+        // scored on its own — proving the tooling is class-generic and adding a new
+        // injected class needs no code change.
+        let labeled = |mut r: Record, c: FailureClass| {
+            r.label = Some(c);
+            r
+        };
+        let records = vec![
+            labeled(
+                rec(1, 100, FailureClass::SingboxDead),
+                FailureClass::SingboxDead,
+            ),
+            labeled(
+                rec(2, 160, FailureClass::SingboxDead),
+                FailureClass::SingboxDead,
+            ),
+            labeled(rec(3, 220, FailureClass::DnsFail), FailureClass::DnsFail),
+            labeled(rec(4, 280, FailureClass::None), FailureClass::DnsFail), // miss
+        ];
+        let stats = injection_accuracy(&records);
+        assert_eq!(stats.len(), 2, "both injected classes appear");
+        let sb = stats.iter().find(|s| s.class == FailureClass::SingboxDead);
+        let dns = stats.iter().find(|s| s.class == FailureClass::DnsFail);
+        assert!(matches!(sb, Some(s) if s.labeled == 2 && s.detected == 2));
+        assert!(matches!(dns, Some(s) if s.labeled == 2 && s.detected == 1));
+    }
+
+    #[test]
     fn injection_safety_distinguishes_recovered_stuck_and_pending() {
         use super::injection_safety;
         let labeled = |mut r: Record| {

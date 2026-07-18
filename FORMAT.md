@@ -84,6 +84,32 @@ Segmentation rules:
 a healthy network yields the rare classes (wan_down, singbox_dead, dns_fail) very
 slowly, which is why the scenario suite exists to seed them.
 
+## Controlled fault injection (the empty classes)
+
+Rare classes never occur organically, so real labelled samples of them come from
+**deliberate, bounded, self-reverting injection**. A router-side marker
+(`/tmp/sovereign-inject`, `class=<c>` + `until=<ts>`) makes the probes stamp every
+record in the window with `inject=<class>` (ground truth), so an induced fault is
+never confused with a real one. `sovereign-episodes` reports two things over that
+label: **detection** (`inject=` vs diagnosed `class=`) and **rollback safety**
+(did each injection window return to health). The label/detection/safety plumbing
+is class-generic — a new class needs no code change.
+
+Safety rules every injection obeys (the principle/III): a revert scheduled *before* the
+break; a bounded hold (`FAULT_SECS`); injection only into a verified-healthy system
+(never stacked on a real fault); an operator kill-switch (`/etc/sovereign-noinject`);
+and — the backstop — the rollback-safety monitor flags any window that never
+recovered, so a failed revert is *visible* even if an independent failsafe missed.
+
+Per-class inducement (least-harm first), all reversible:
+
+| class | how induced | blast radius | independent failsafe |
+|-------|-------------|--------------|----------------------|
+| `singbox_dead` | `podkop stop` → `podkop start` | tunnel-dependent traffic only (R3R full-tunnel loses all; br-lan loses only geo-routed; guest/router direct unaffected) | podkop-selfheal (cron */10) + init/boot |
+| `dns_fail` | drop loopback DNS (`iptables OUTPUT -o lo --dport 53 -d 127.0.0.1 DROP`) → delete rule | **probe only** — the router's `127.0.0.1` resolver; **clients query dnsmasq on the LAN IP and are unaffected** | revert deletes ALL matching rules in a loop; a router reboot clears manual iptables |
+| `node_degraded` | not injected — already the best-collected organic class (no need); netem module is absent and would clobber the existing `cake` SQM | — | — |
+| `wan_down` | not injected autonomously — a whole-uplink outage (every subnet, slow PPPoE re-establish) is too disruptive; stays synthetic-only | — | — |
+
 ## Where the data lives
 
 - Laptop, canonical: `~/.local/share/sovereign/records.log` (+ rotated `.1..N`),

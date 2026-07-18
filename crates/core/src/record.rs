@@ -79,6 +79,14 @@ pub struct Record {
     pub outcome: Outcome,
     /// Provenance of this record (live loop vs. recovered from the buffer).
     pub source: Source,
+    /// Ground-truth label for a **deliberately injected** fault: the class we
+    /// induced on purpose this cycle (from the router's injection marker), or
+    /// `None` for organic operation. This is what lets analysis and a future
+    /// trainer separate "we broke it on purpose" from a real fault — comparing it
+    /// to `failure` measures the rules' detection on genuine router behaviour, not
+    /// synthetic telemetry. The decision core never reads it (the principle: it is a
+    /// label about our own action, not an observation the brain reacts to).
+    pub label: Option<FailureClass>,
 }
 
 /// Serialize a record as one self-describing line (no trailing newline). The
@@ -114,7 +122,14 @@ pub fn write_record<W: Write>(w: &mut W, r: &Record) -> core::fmt::Result {
     w.write_str(" outcome=")?;
     w.write_str(outcome_label(r.outcome))?;
     w.write_str(" src=")?;
-    w.write_str(source_label(r.source))
+    w.write_str(source_label(r.source))?;
+    // Emitted only for deliberately injected faults — organic records stay clean
+    // (optional, backward-compatible: absence parses as "not injected").
+    if let Some(class) = r.label {
+        w.write_str(" inject=")?;
+        w.write_str(failure_label(class))?;
+    }
+    Ok(())
 }
 
 fn write_wan<W: Write>(w: &mut W, wan: Wan) -> core::fmt::Result {
@@ -326,6 +341,8 @@ pub fn parse_record(line: &str) -> Result<Record, ParseError> {
     let mut source = Source::Live;
     // Optional: records written before auxiliary signals parse as UNKNOWN.
     let mut aux = Aux::UNKNOWN;
+    // Optional: only injected-fault records carry a ground-truth label.
+    let mut label: Option<FailureClass> = None;
 
     for token in line.split_whitespace() {
         let (key, value) = token.split_once('=').ok_or(ParseError::BadField)?;
@@ -345,6 +362,7 @@ pub fn parse_record(line: &str) -> Result<Record, ParseError> {
             "action" => action = Some(parse_action(value).ok_or(ParseError::BadField)?),
             "outcome" => outcome = Some(parse_outcome(value).ok_or(ParseError::BadField)?),
             "src" => source = parse_source(value).ok_or(ParseError::BadField)?,
+            "inject" => label = Some(parse_failure(value).ok_or(ParseError::BadField)?),
             "wanok" => aux.wan_reach = parse_wanok(value)?,
             "load" => aux.load_centi = parse_opt_u32(value)?,
             "mem" => aux.mem_free_kb = parse_opt_u32(value)?,
@@ -372,6 +390,7 @@ pub fn parse_record(line: &str) -> Result<Record, ParseError> {
         action: action.ok_or(ParseError::MissingField)?,
         outcome: outcome.ok_or(ParseError::MissingField)?,
         source,
+        label,
     })
 }
 
@@ -655,6 +674,7 @@ mod tests {
             action: Action::Observe,
             outcome: Outcome::NotActed,
             source: Source::Live,
+            label: None,
         }
     }
 
@@ -802,6 +822,23 @@ mod tests {
         let stripped = line.replace(" src=live", "");
         let parsed = parse_record(&stripped)?;
         assert_eq!(parsed.source, Source::Live);
+        Ok(())
+    }
+
+    #[test]
+    fn injection_label_round_trips_and_defaults_absent() -> Result<(), ParseError> {
+        // Organic records omit the label entirely.
+        let mut line = String::new();
+        let _ = write_record(&mut line, &sample());
+        assert!(!line.contains("inject="));
+        assert_eq!(parse_record(&line)?.label, None);
+        // An injected record carries the ground-truth class.
+        let mut injected = sample();
+        injected.label = Some(FailureClass::SingboxDead);
+        let mut line2 = String::new();
+        let _ = write_record(&mut line2, &injected);
+        assert!(line2.contains("inject=singbox_dead"));
+        assert_eq!(parse_record(&line2)?.label, Some(FailureClass::SingboxDead));
         Ok(())
     }
 

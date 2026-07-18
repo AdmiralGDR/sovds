@@ -92,16 +92,19 @@ fn print_summary(summary: &[ClassEpisodes], total: usize) {
 
 fn print_list(episodes: &[Episode]) {
     println!(
-        "{:<14} {:>6} {:>8} {:>7} {:>5} {:>15} {:<8} src",
-        "class", "tick0", "cycles", "dur(s)", "acts", "peak-action", "end"
+        "{:<14} {:>6} {:>7} {:>5} {:>15} {:<8} {:<8} injected",
+        "class", "tick0", "dur(s)", "acts", "peak-action", "end", "src"
     );
-    println!("{}", "-".repeat(84));
+    println!("{}", "-".repeat(88));
     for e in episodes {
+        let injected = match e.injected {
+            Some(c) => class_label(c),
+            None => "-",
+        };
         println!(
-            "{:<14} {:>6} {:>8} {:>7} {:>5} {:>15} {:<8} {}",
+            "{:<14} {:>6} {:>7} {:>5} {:>15} {:<8} {:<8} {injected}",
             class_label(e.class),
             e.start_tick.0,
-            e.records,
             e.duration_secs(),
             e.actions,
             action_label(e.peak_action),

@@ -60,6 +60,9 @@ fn main() -> ExitCode {
                     // Laboratory episodes are never actuated.
                     outcome: Outcome::NotActed,
                     source: Source::Synthetic,
+                    // Synthetic frames aren't a live injection; `src=synth` already
+                    // sets them apart, so the injection label stays clear.
+                    label: None,
                 };
                 if rec.append(&record).is_ok() {
                     seeded = seeded.saturating_add(1);

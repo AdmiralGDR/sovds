@@ -62,6 +62,10 @@ pub struct Episode {
     pub end: EpisodeEnd,
     /// Provenance of the episode (the source of its first cycle).
     pub source: Source,
+    /// Ground-truth injected class if any cycle in the episode was labelled as a
+    /// deliberate injection — this is what distinguishes an episode we induced on
+    /// purpose from a real one. `None` = organic.
+    pub injected: Option<FailureClass>,
 }
 
 impl Episode {
@@ -124,6 +128,7 @@ struct Open {
     actions: u32,
     peak_action: Action,
     source: Source,
+    injected: Option<FailureClass>,
 }
 
 /// A streaming segmenter: feed records in chronological (file) order.
@@ -159,6 +164,10 @@ impl Segmenter {
                 op.records = op.records.saturating_add(1);
                 if r.wall_time > 0 {
                     op.end_wall = r.wall_time;
+                }
+                // Any labelled cycle marks the whole episode as injected.
+                if op.injected.is_none() {
+                    op.injected = r.label;
                 }
                 if !matches!(r.action, Action::Observe) {
                     op.actions = op.actions.saturating_add(1);
@@ -213,6 +222,7 @@ impl Segmenter {
             actions: u32::from(action_is_real),
             peak_action: r.action,
             source: r.source,
+            injected: r.label,
         });
     }
 
@@ -230,6 +240,7 @@ impl Segmenter {
             peak_action: op.peak_action,
             end,
             source: op.source,
+            injected: op.injected,
         })
     }
 }
@@ -266,6 +277,7 @@ mod tests {
             action,
             outcome: Outcome::NotActed,
             source: Source::Live,
+            label: None,
         }
     }
 

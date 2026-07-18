@@ -17,7 +17,8 @@ use sovereign_core::domain::{
     Aux, Dns, LatencyMs, NodeHealth, NodeId, Proc, Telemetry, Tunnel, Wan, WanReach, MAX_NODES,
 };
 use sovereign_core::error::ProbeError;
-use sovereign_core::ports::TelemetrySource;
+use sovereign_core::failure::FailureClass;
+use sovereign_core::ports::{Observation, TelemetrySource};
 
 /// The contract executed on the router. Each probe is isolated: if one fails, it
 /// reports `unknown`/`dead` for its own key rather than failing the whole
@@ -42,6 +43,7 @@ awk '{ printf "load=%d\n", $1 * 100 }' /proc/loadavg 2>/dev/null
 awk '/MemAvailable/ { printf "mem=%d\n", $2 }' /proc/meminfo 2>/dev/null
 A=$(curl -s -m 8 -H "Authorization: Bearer $S" "http://192.168.1.1:9090/proxies/vless_out-urltest-out" 2>/dev/null | sed -n 's/.*"now": *"vless_out-\([0-9][0-9]*\)-out".*/\1/p')
 [ -n "$A" ] && echo "active=$A"
+if [ -f /tmp/sovereign-inject ]; then IC=$(sed -n 's/.*class=\([a-z_]*\).*/\1/p' /tmp/sovereign-inject); IU=$(sed -n 's/.*until=\([0-9]*\).*/\1/p' /tmp/sovereign-inject); [ -n "$IC" ] && [ -n "$IU" ] && [ "$(date +%s)" -lt "$IU" ] && echo "inject=$IC"; fi
 "#;
 
 /// Parse the router's telemetry contract into a validated [`Telemetry`].
@@ -51,7 +53,7 @@ A=$(curl -s -m 8 -H "Authorization: Bearer $S" "http://192.168.1.1:9090/proxies/
 /// `node=<id>:<latency>` lines are optional and bounded by [`MAX_NODES`];
 /// auxiliary keys (`wanok`, `load`, `mem`, `active`) are optional too — a probe
 /// that failed to measure them simply omits them, and they parse to "unknown".
-pub fn parse_snapshot(text: &str) -> Result<Telemetry, ProbeError> {
+pub fn parse_snapshot(text: &str) -> Result<Observation, ProbeError> {
     let mut wan: Option<Wan> = None;
     let mut singbox: Option<Proc> = None;
     let mut tunnel: Option<Tunnel> = None;
@@ -59,6 +61,7 @@ pub fn parse_snapshot(text: &str) -> Result<Telemetry, ProbeError> {
     let mut nodes: [Option<NodeHealth>; MAX_NODES] = [None; MAX_NODES];
     let mut node_slot: usize = 0;
     let mut aux = Aux::UNKNOWN;
+    let mut injected: Option<FailureClass> = None;
 
     for raw in text.lines() {
         let line = raw.trim();
@@ -94,19 +97,36 @@ pub fn parse_snapshot(text: &str) -> Result<Telemetry, ProbeError> {
                 aux.mem_free_kb = Some(value.parse::<u32>().map_err(|_| ProbeError::Malformed)?)
             }
             "active" => aux.active = Some(value.parse::<u8>().map_err(|_| ProbeError::Malformed)?),
+            "inject" => injected = Some(parse_failure_class(value)?),
             _ => return Err(ProbeError::Malformed),
         }
     }
 
     match (wan, singbox, tunnel, dns) {
-        (Some(wan), Some(singbox), Some(tunnel), Some(dns)) => Ok(Telemetry {
-            wan,
-            singbox,
-            tunnel,
-            dns,
-            nodes,
-            aux,
+        (Some(wan), Some(singbox), Some(tunnel), Some(dns)) => Ok(Observation {
+            telemetry: Telemetry {
+                wan,
+                singbox,
+                tunnel,
+                dns,
+                nodes,
+                aux,
+            },
+            injected,
         }),
+        _ => Err(ProbeError::Malformed),
+    }
+}
+
+/// Parse a ground-truth injection label — the same wire spelling the record format
+/// uses for a fault class. An unknown value is hostile input and is rejected.
+fn parse_failure_class(value: &str) -> Result<FailureClass, ProbeError> {
+    match value {
+        "wan_down" => Ok(FailureClass::WanDown),
+        "singbox_dead" => Ok(FailureClass::SingboxDead),
+        "node_dead" => Ok(FailureClass::NodeDead),
+        "node_degraded" => Ok(FailureClass::NodeDegraded),
+        "dns_fail" => Ok(FailureClass::DnsFail),
         _ => Err(ProbeError::Malformed),
     }
 }
@@ -188,7 +208,7 @@ impl<'r, R: CommandRunner> SshTelemetry<'r, R> {
 }
 
 impl<R: CommandRunner> TelemetrySource for SshTelemetry<'_, R> {
-    fn sample(&self) -> Result<Telemetry, ProbeError> {
+    fn sample(&self) -> Result<Observation, ProbeError> {
         match self.ssh.exec(REMOTE_TELEMETRY_SCRIPT) {
             Ok(output) => parse_snapshot(&output.stdout_text()),
             // A transport failure is not a diagnosis: report it as an inability
@@ -209,7 +229,7 @@ mod tests {
 
     #[test]
     fn parses_a_complete_healthy_snapshot() -> Result<(), ProbeError> {
-        let t = parse_snapshot(GOOD)?;
+        let t = parse_snapshot(GOOD)?.telemetry;
         assert_eq!(t.wan, Wan::Up { uptime_s: 12345 });
         assert_eq!(t.singbox, Proc::Running);
         assert_eq!(
@@ -227,11 +247,27 @@ mod tests {
     #[test]
     fn parses_auxiliary_signals() -> Result<(), ProbeError> {
         let text = format!("{GOOD}wanok=1\nload=42\nmem=151204\nactive=4\n");
-        let t = parse_snapshot(&text)?;
+        let t = parse_snapshot(&text)?.telemetry;
         assert_eq!(t.aux.wan_reach, WanReach::Ok);
         assert_eq!(t.aux.load_centi, Some(42));
         assert_eq!(t.aux.mem_free_kb, Some(151_204));
         assert_eq!(t.aux.active, Some(4));
+        Ok(())
+    }
+
+    #[test]
+    fn parses_and_validates_the_injection_label() -> Result<(), ProbeError> {
+        use sovereign_core::failure::FailureClass;
+        // A valid marker labels the observation as a deliberate injection.
+        let obs = parse_snapshot(&format!("{GOOD}inject=singbox_dead\n"))?;
+        assert_eq!(obs.injected, Some(FailureClass::SingboxDead));
+        // No marker -> organic.
+        assert_eq!(parse_snapshot(GOOD)?.injected, None);
+        // A bogus class is hostile input and is rejected.
+        assert_eq!(
+            parse_snapshot(&format!("{GOOD}inject=melted\n")),
+            Err(ProbeError::Malformed)
+        );
         Ok(())
     }
 
@@ -245,7 +281,7 @@ mod tests {
 
     #[test]
     fn parses_down_and_dead_states() -> Result<(), ProbeError> {
-        let t = parse_snapshot("wan=down\nsingbox=dead\ntunnel=dead\ndns=failing\n")?;
+        let t = parse_snapshot("wan=down\nsingbox=dead\ntunnel=dead\ndns=failing\n")?.telemetry;
         assert_eq!(t.wan, Wan::Down);
         assert_eq!(t.singbox, Proc::Dead);
         assert_eq!(t.tunnel, Tunnel::Dead);
@@ -280,7 +316,7 @@ mod tests {
     #[test]
     fn parses_optional_node_lines() -> Result<(), ProbeError> {
         let text = format!("{GOOD}node=1:439\nnode=2:x\n");
-        let t = parse_snapshot(&text)?;
+        let t = parse_snapshot(&text)?.telemetry;
         let first = t.nodes.iter().flatten().count();
         assert_eq!(first, 2);
         Ok(())
@@ -293,7 +329,7 @@ mod tests {
             // i stays below 20, so it fits a u8 node id; no arithmetic needed.
             text.push_str(&format!("node={i}:{i}\n"));
         }
-        let t = parse_snapshot(&text)?; // must not panic or overflow
+        let t = parse_snapshot(&text)?.telemetry; // must not panic or overflow
         assert!(t.nodes.iter().flatten().count() <= t.nodes.len());
         Ok(())
     }

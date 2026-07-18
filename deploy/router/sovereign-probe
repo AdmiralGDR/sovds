@@ -62,7 +62,17 @@ mem=$(awk '/MemAvailable/ { printf "mem=%d", $2 }' /proc/meminfo 2>/dev/null)
 A=$(curl -s -m 8 -H "Authorization: Bearer $S" "http://192.168.1.1:9090/proxies/vless_out-urltest-out" 2>/dev/null | sed -n 's/.*"now": *"vless_out-\([0-9][0-9]*\)-out".*/\1/p')
 active=""; [ -n "$A" ] && active="active=$A"
 
-echo "ts=$ts $wan $sb $tun $dns $nodes $wok $load $mem $active" >> "$BUF"
+# Injection label: if a deliberate-fault marker is active (unexpired), stamp the
+# sample with the ground-truth class, so buffered records during a laptop-off
+# injection are also distinguishable from real faults.
+inject=""
+if [ -f /tmp/sovereign-inject ]; then
+    IC=$(sed -n 's/.*class=\([a-z_]*\).*/\1/p' /tmp/sovereign-inject)
+    IU=$(sed -n 's/.*until=\([0-9]*\).*/\1/p' /tmp/sovereign-inject)
+    [ -n "$IC" ] && [ -n "$IU" ] && [ "$ts" -lt "$IU" ] && inject="inject=$IC"
+fi
+
+echo "ts=$ts $wan $sb $tun $dns $nodes $wok $load $mem $active $inject" >> "$BUF"
 
 # Ring bound: keep only the newest MAX_LINES (atomic swap; a failed swap leaves
 # the old buffer intact rather than truncating it).

@@ -27,8 +27,8 @@ pub mod record;
 pub mod routerdomain;
 pub mod scenario;
 
+// Generic dataset machinery now lives in the `sovds` toolkit; re-exported here so
+// existing `crate::{stats,episode}` paths keep working unchanged over the router
+// domain.
 pub use sovds::episode;
-/// Generic dataset machinery now lives in the `sovds` toolkit; re-exported here so
-/// existing `crate::{stats,episode}` paths keep working unchanged over the router
-/// domain.
 pub use sovds::stats;

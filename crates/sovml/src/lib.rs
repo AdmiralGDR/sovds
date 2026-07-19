@@ -29,6 +29,8 @@
 // allocator — but never `std`. `no_std + alloc` runs on any target with a heap.
 extern crate alloc;
 
+pub mod metrics;
 pub mod tree;
 
+pub use metrics::Metrics;
 pub use tree::{DecisionTree, TreeConfig};

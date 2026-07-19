@@ -108,6 +108,89 @@ impl DecisionTree {
         self.n_classes
     }
 
+    /// Serialize the tree to a self-describing, deterministic text form — one line
+    /// per node — so a model can be **saved and improved over time** (the basis of
+    /// cumulative learning). The inverse of [`DecisionTree::deserialize`].
+    #[must_use]
+    pub fn serialize(&self) -> String {
+        let mut out = String::new();
+        let _ = writeln!(
+            out,
+            "sovml-tree 1 {} {} {}",
+            self.n_classes,
+            self.root,
+            self.nodes.len()
+        );
+        for node in &self.nodes {
+            match *node {
+                Node::Leaf { class, n } => {
+                    let _ = writeln!(out, "L {class} {n}");
+                }
+                Node::Split {
+                    feature,
+                    threshold,
+                    left,
+                    right,
+                } => {
+                    let _ = writeln!(out, "S {feature} {threshold} {left} {right}");
+                }
+            }
+        }
+        out
+    }
+
+    /// Parse a tree back from [`DecisionTree::serialize`]. A boundary guard: any
+    /// malformed or inconsistent input yields `None`, never a panic (the principle).
+    #[must_use]
+    pub fn deserialize(text: &str) -> Option<DecisionTree> {
+        let mut lines = text.lines();
+        let mut header = lines.next()?.split_whitespace();
+        if header.next()? != "sovml-tree" || header.next()? != "1" {
+            return None;
+        }
+        let n_classes: usize = header.next()?.parse().ok()?;
+        let root: usize = header.next()?.parse().ok()?;
+        let count: usize = header.next()?.parse().ok()?;
+
+        let mut nodes: Vec<Node> = Vec::new();
+        for line in lines {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let mut tok = line.split_whitespace();
+            let node = match tok.next()? {
+                "L" => Node::Leaf {
+                    class: tok.next()?.parse().ok()?,
+                    n: tok.next()?.parse().ok()?,
+                },
+                "S" => Node::Split {
+                    feature: tok.next()?.parse().ok()?,
+                    threshold: tok.next()?.parse().ok()?,
+                    left: tok.next()?.parse().ok()?,
+                    right: tok.next()?.parse().ok()?,
+                },
+                _ => return None,
+            };
+            nodes.push(node);
+        }
+        // Structural validation: declared size and a reachable, in-range root.
+        if nodes.len() != count || root >= nodes.len() {
+            return None;
+        }
+        for node in &nodes {
+            if let Node::Split { left, right, .. } = *node {
+                if left >= nodes.len() || right >= nodes.len() {
+                    return None;
+                }
+            }
+        }
+        Some(DecisionTree {
+            nodes,
+            root,
+            n_classes: n_classes.clamp(1, MAX_CLASSES),
+        })
+    }
+
     /// Render the tree as human-readable nested rules — the interpretability that
     /// makes a decision tree kin to a hand-written rule engine. `feature_names` and
     /// `class_names` label the splits and leaves; missing names fall back to
@@ -386,8 +469,35 @@ fn sum_sq(counts: &[u64; MAX_CLASSES]) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{train, TreeConfig};
+    use super::{train, DecisionTree, TreeConfig};
     use alloc::vec;
+
+    #[test]
+    fn serialize_round_trips_and_predicts_identically() {
+        let mut rows: Vec<Vec<i64>> = Vec::new();
+        let mut labels: Vec<u32> = Vec::new();
+        for v in 0..40 {
+            rows.push(vec![v, 7]);
+            labels.push(0);
+        }
+        for v in 60..100 {
+            rows.push(vec![v, 7]);
+            labels.push(1);
+        }
+        let tree = train(&rows, &labels, 2, TreeConfig::new());
+        let text = tree.serialize();
+        let back = DecisionTree::deserialize(&text);
+        assert!(back.is_some(), "a serialized tree must round-trip");
+        if let Some(back) = back {
+            for v in [5i64, 35, 65, 95] {
+                assert_eq!(tree.predict(&[v, 7]), back.predict(&[v, 7]));
+            }
+            assert_eq!(back.size(), tree.size());
+        }
+        // Hostile input is rejected, not trusted.
+        assert!(DecisionTree::deserialize("garbage").is_none());
+        assert!(DecisionTree::deserialize("sovml-tree 1 2 99 1\nL 0 5").is_none());
+    }
 
     #[test]
     fn learns_a_clean_axis_aligned_split() {

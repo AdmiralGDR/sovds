@@ -21,6 +21,7 @@ dependencies = [
  "sovds",
  "sovereign-adapters",
  "sovereign-core",
+ "sovml",
 ]
 
 [[package]]

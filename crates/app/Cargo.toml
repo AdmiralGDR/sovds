@@ -43,10 +43,15 @@ path = "src/bin/export.rs"
 name = "sovereign-anomaly"
 path = "src/bin/anomaly.rs"
 
+[[bin]]
+name = "sovereign-train"
+path = "src/bin/train.rs"
+
 [dependencies]
 sovereign-core = { path = "../core" }
 sovereign-adapters = { path = "../adapters" }
 sovds = { path = "../sovds" }
+sovml = { path = "../sovml" }
 
 [lints]
 workspace = true

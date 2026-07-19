@@ -15,7 +15,11 @@ Brain reference implementation. Dates are the working timeline, not release tags
   works on a non-router domain end to end.
 - Product documentation: `crates/sovds/README.md` (integration guide),
   `docs/SOVEREIGN-FAMILY.md` (family catalogue + the deliberate licensing split),
-  `LICENSE-MIT`.
+  `CONTRIBUTING.md`, and both licence texts (`LICENSE-MIT`, `LICENSE-APACHE`).
+- An external-consumer integration test (`crates/sovds/tests/integration.rs`) that
+  builds the whole pipeline for an unrelated domain through only the public API.
+- CI gates for the set of principles's sovereignty the principles: `no_std` core build and the
+  byte-identical reproducible-build check.
 
 ### Changed
 - The Sovereign Router Brain now runs **on** `sovds` (`RouterDomain: sovds::Domain`)

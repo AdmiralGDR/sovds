@@ -7,7 +7,9 @@
 //! bounded (the principle). A trained tree is a flat arena of nodes; walking it to
 //! [predict](DecisionTree::predict) needs nothing but the core (`no_std`).
 
+use alloc::string::String;
 use alloc::vec::Vec;
+use core::fmt::Write as _;
 
 /// Upper bound on the number of classes (bounded per-node state, the principle).
 pub const MAX_CLASSES: usize = 16;
@@ -104,6 +106,47 @@ impl DecisionTree {
     #[must_use]
     pub fn n_classes(&self) -> usize {
         self.n_classes
+    }
+
+    /// Render the tree as human-readable nested rules — the interpretability that
+    /// makes a decision tree kin to a hand-written rule engine. `feature_names` and
+    /// `class_names` label the splits and leaves; missing names fall back to
+    /// indices.
+    #[must_use]
+    pub fn render(&self, feature_names: &[&str], class_names: &[&str]) -> String {
+        let mut out = String::new();
+        self.render_node(self.root, 0, feature_names, class_names, &mut out);
+        out
+    }
+
+    fn render_node(
+        &self,
+        node: usize,
+        depth: usize,
+        features: &[&str],
+        classes: &[&str],
+        out: &mut String,
+    ) {
+        let pad = "  ".repeat(depth);
+        match self.nodes.get(node) {
+            Some(&Node::Leaf { class, n }) => {
+                let name = classes.get(class as usize).copied().unwrap_or("<class>");
+                let _ = writeln!(out, "{pad}=> {name} (n={n})");
+            }
+            Some(&Node::Split {
+                feature,
+                threshold,
+                left,
+                right,
+            }) => {
+                let name = features.get(feature).copied().unwrap_or("<feat>");
+                let _ = writeln!(out, "{pad}if {name} <= {threshold}:");
+                self.render_node(left, depth.saturating_add(1), features, classes, out);
+                let _ = writeln!(out, "{pad}else:");
+                self.render_node(right, depth.saturating_add(1), features, classes, out);
+            }
+            None => {}
+        }
     }
 }
 

@@ -110,6 +110,10 @@ sh scripts/reproducible-build.sh # the principle: all 7 binaries byte-identical 
   against an online baseline of its signals and surface the ones the rules called
   healthy (`class=none`) but that look statistically unusual — rule-gap candidates
   for human review. Never actuates.
+- `sovereign-train [log] [--depth N]` — train an interpretable **decision tree**
+  (`sovml`) on the corpus and evaluate it against a held-out slice: overall
+  agreement with the rules, per-class recall, and the learned tree printed as
+  readable rules. The bridge from the `sovds` dataset to a `sovml` model.
 - `sovereign-replay` — replay the corpus under different adaptive configs (tuning
   as measurement, not guesswork).
 - `sovereign-backfill` — loss-free drain of the router's fallback buffer.

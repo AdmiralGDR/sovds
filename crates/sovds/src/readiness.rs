@@ -13,6 +13,7 @@ use crate::episode::{Episode, EpisodeEnd};
 /// Per-class rollup of episodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClassReadiness<D: Domain> {
+    /// The fault class this row summarises.
     pub class: D::Fault,
     /// Independent episodes of this class.
     pub count: usize,

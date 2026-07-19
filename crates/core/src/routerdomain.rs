@@ -256,12 +256,20 @@ fn write_aux<W: Write>(w: &mut W, aux: &Aux) -> core::fmt::Result {
 fn write_state<W: Write>(w: &mut W, state: State) -> core::fmt::Result {
     match state {
         State::Healthy => w.write_str("healthy"),
-        State::Suspect { failing, seen } => write!(w, "suspect:{}:{}", failure_label(failing), seen),
+        State::Suspect { failing, seen } => {
+            write!(w, "suspect:{}:{}", failure_label(failing), seen)
+        }
         State::Cooldown {
             failing,
             level,
             until,
-        } => write!(w, "cooldown:{}:{}:{}", failure_label(failing), level, until.0),
+        } => write!(
+            w,
+            "cooldown:{}:{}:{}",
+            failure_label(failing),
+            level,
+            until.0
+        ),
     }
 }
 

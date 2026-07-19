@@ -20,6 +20,7 @@ use crate::record::Record;
 /// Per-class, per-window detection tally.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Detection<D: Domain> {
+    /// The injected fault class this row scores.
     pub class: D::Fault,
     /// Injection windows of this class.
     pub windows: usize,
@@ -93,9 +94,13 @@ fn window_stat<D: Domain>(class: D::Fault, records: &[Record<D>]) -> Detection<D
 /// (right-censored — recovery not yet observable, never a failure).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Safety {
+    /// Injection windows seen.
     pub windows: usize,
+    /// Windows followed by a healthy record — recovery confirmed.
     pub recovered: usize,
+    /// Windows followed only by faulty records — a rollback that did not take.
     pub stuck: usize,
+    /// Windows at the corpus tail with no following record yet (right-censored).
     pub pending: usize,
 }
 

@@ -6,13 +6,13 @@
 //! healthy network yields few, so the rare classes converge in episodes very
 //! slowly, and this prints exactly how slowly. `--list` dumps every episode.
 
+use sovds::episode::{segment, Episode, EpisodeEnd, SegConfig};
+use sovds::injection;
+use sovds::readiness::{summarize, ClassReadiness};
 use sovereign_adapters::dataset;
 use sovereign_core::failure::FailureClass;
 use sovereign_core::record::Source;
 use sovereign_core::routerdomain::RouterDomain;
-use sovds::episode::{segment, Episode, EpisodeEnd, SegConfig};
-use sovds::injection;
-use sovds::readiness::{summarize, ClassReadiness};
 use std::path::PathBuf;
 use std::process::ExitCode;
 

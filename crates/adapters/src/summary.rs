@@ -96,7 +96,12 @@ pub fn summarize(records: &[Record]) -> Summary {
         Action::FailoverBackup,
         Action::Reboot,
     ]
-    .map(|kind| (kind, records.iter().filter(|r| r.annot.action == kind).count()));
+    .map(|kind| {
+        (
+            kind,
+            records.iter().filter(|r| r.annot.action == kind).count(),
+        )
+    });
 
     let mut path_latencies: Vec<u32> = Vec::new();
     for record in records {

@@ -37,6 +37,9 @@
 //! [`recorder`] (durable rotating append), [`readiness`] (episodes-per-class).
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
+// The public API of an embeddable, independent library must stay documented — make
+// it a compile-time gate, not a good intention (the principle: zero-touch quality gates).
+#![deny(missing_docs)]
 
 pub mod domain;
 pub mod episode;

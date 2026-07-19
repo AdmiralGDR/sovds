@@ -38,8 +38,9 @@ pub struct Episode<D: Domain> {
     pub class: D::Fault,
     /// Logical tick of the first fault cycle (within its run).
     pub start_tick: Tick,
-    /// Wall-clock (Unix secs) of onset and of the last fault cycle; `0` if unknown.
+    /// Wall-clock (Unix secs) of onset; `0` if unknown.
     pub start_wall: u64,
+    /// Wall-clock (Unix secs) of the last fault cycle; `0` if unknown.
     pub end_wall: u64,
     /// Fault cycles in the episode (excludes tolerated healthy flickers).
     pub records: u32,

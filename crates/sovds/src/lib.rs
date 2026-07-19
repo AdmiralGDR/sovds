@@ -57,9 +57,13 @@ pub mod dataset;
 pub mod readiness;
 #[cfg(feature = "std")]
 pub mod recorder;
+#[cfg(feature = "std")]
+pub mod window;
 
 #[cfg(test)]
 mod testkit;
 
 pub use domain::Domain;
 pub use record::{Record, Source, Tick};
+#[cfg(feature = "std")]
+pub use window::{WindowConfig, WindowFeatures};

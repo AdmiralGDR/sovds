@@ -14,16 +14,22 @@
 //! the dataset grows; `--history <log>` records the trajectory so "better every
 //! day" is a fact you can read.
 //!
-//! Usage: `sovereign-train [log] [--depth N] [--save model.tree] [--history hist.log]`.
+//! `--forest [N]` trains a random forest (N trees, default 64) instead of a single
+//! tree; both kinds compete in the same cumulative loop on held-out macro-F1, so an
+//! ensemble only replaces the saved tree if it genuinely scores higher.
+//!
+//! Usage:
+//! `sovereign-train [log] [--depth N] [--forest [N]] [--save model] [--history hist.log]`.
 
 use sovds::domain::Domain;
 use sovds::record::Record;
 use sovereign_adapters::dataset;
 use sovereign_core::failure::FailureClass;
 use sovereign_core::routerdomain::RouterDomain;
+use sovml::forest::{train_forest, ForestConfig};
 use sovml::metrics::Metrics;
+use sovml::model::Model;
 use sovml::tree::{train, TreeConfig};
-use sovml::DecisionTree;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -35,6 +41,18 @@ fn main() -> ExitCode {
         .unwrap_or(8);
     let save = flag_value(&args, "--save").map(PathBuf::from);
     let history = flag_value(&args, "--history").map(PathBuf::from);
+    // --forest [N] trains a random forest of N trees (default 64) instead of a
+    // single tree; the two compete on the same held-out macro-F1.
+    let forest_trees = if args.iter().any(|a| a == "--forest") {
+        Some(
+            flag_value(&args, "--forest")
+                .and_then(|v| v.parse::<usize>().ok())
+                .filter(|&n| n > 0)
+                .unwrap_or(64),
+        )
+    } else {
+        None
+    };
 
     let generations = std::env::var("SOVEREIGN_LOG_GENERATIONS")
         .ok()
@@ -68,7 +86,20 @@ fn main() -> ExitCode {
         max_depth: depth,
         min_samples_leaf: 8,
     };
-    let candidate = train(train_rows, train_labels, n_classes, cfg);
+    let candidate = match forest_trees {
+        Some(n_trees) => Model::Forest(train_forest(
+            train_rows,
+            train_labels,
+            n_classes,
+            ForestConfig {
+                n_trees,
+                tree: cfg,
+                mtry: 0,
+                seed: 1,
+            },
+        )),
+        None => Model::Tree(train(train_rows, train_labels, n_classes, cfg)),
+    };
     let cand_metrics = evaluate(&candidate, test_rows, test_labels, n_classes);
     let cand_f1 = cand_metrics.macro_f1_pm();
 
@@ -78,8 +109,9 @@ fn main() -> ExitCode {
         test_rows.len()
     );
     println!(
-        "Candidate: {} nodes; accuracy {}‰, macro-F1 {}‰ over {} classes present.",
-        candidate.size(),
+        "Candidate: {} ({} nodes); accuracy {}‰, macro-F1 {}‰ over {} classes present.",
+        candidate.kind(),
+        candidate.total_nodes(),
         cand_metrics.accuracy_pm(),
         cand_f1,
         cand_metrics.classes_present(),
@@ -90,7 +122,7 @@ fn main() -> ExitCode {
     if let Some(save_path) = &save {
         let incumbent = std::fs::read_to_string(save_path)
             .ok()
-            .and_then(|t| DecisionTree::deserialize(&t));
+            .and_then(|t| Model::deserialize(&t));
         let inc_f1 = incumbent
             .as_ref()
             .map(|m| evaluate(m, test_rows, test_labels, n_classes).macro_f1_pm());
@@ -144,10 +176,22 @@ fn main() -> ExitCode {
             print_trajectory(hist);
         }
     } else {
-        let names = RouterDomain::signal_names();
-        let class_names: Vec<&str> = faults.iter().map(|&f| label_of(f)).collect();
-        println!("\nLearned tree (the rules, re-derived from data):\n");
-        print!("{}", candidate.render(names, &class_names));
+        match &candidate {
+            Model::Tree(tree) => {
+                let names = RouterDomain::signal_names();
+                let class_names: Vec<&str> = faults.iter().map(|&f| label_of(f)).collect();
+                println!("\nLearned tree (the rules, re-derived from data):\n");
+                print!("{}", tree.render(names, &class_names));
+            }
+            Model::Forest(forest) => {
+                println!(
+                    "\nRandom forest of {} trees ({} nodes total) — vote-based, not a single \
+                     printable rule set. Use --save to keep it and track its macro-F1.",
+                    forest.len(),
+                    forest.total_nodes(),
+                );
+            }
+        }
     }
 
     eprintln!(
@@ -158,11 +202,11 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Evaluate a tree on a held-out slice into a confusion-matrix [`Metrics`].
-fn evaluate(tree: &DecisionTree, rows: &[Vec<i64>], labels: &[u32], n_classes: usize) -> Metrics {
+/// Evaluate a model on a held-out slice into a confusion-matrix [`Metrics`].
+fn evaluate(model: &Model, rows: &[Vec<i64>], labels: &[u32], n_classes: usize) -> Metrics {
     let mut m = Metrics::new(n_classes);
     for (row, &label) in rows.iter().zip(labels.iter()) {
-        m.record(label, tree.predict(row));
+        m.record(label, model.predict(row));
     }
     m
 }
@@ -228,16 +272,20 @@ fn label_of(f: FailureClass) -> &'static str {
 /// The first positional argument (the log path), skipping value-taking flags and
 /// their arguments so `--save X` does not get mistaken for the log.
 fn positional_log(args: &[String]) -> Option<PathBuf> {
-    let value_flags = ["--depth", "--save", "--history"];
-    let mut skip = false;
+    let value_flags = ["--depth", "--save", "--history", "--forest"];
+    let mut prev_is_value_flag = false;
     for a in args {
-        if skip {
-            skip = false;
-            continue;
+        if prev_is_value_flag {
+            prev_is_value_flag = false;
+            // The token after a value-flag is its value only if it is not itself a
+            // flag (so `--forest --save X` treats `--save` as a flag, not a count).
+            if !a.starts_with("--") {
+                continue;
+            }
         }
         if a.starts_with("--") {
             if value_flags.contains(&a.as_str()) {
-                skip = true;
+                prev_is_value_flag = true;
             }
             continue;
         }

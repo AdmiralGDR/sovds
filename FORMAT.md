@@ -1,29 +1,35 @@
-# Sovereign dataset format
+# Sovereign dataset format (router instance)
 
-The durable output of the brain is one thing: an append-only log of **records**,
-one per supervision cycle, on the laptop (never on router flash). This document is
-the stable contract for that data — what a field means, its units, and how the
-format may evolve — so the dataset stays readable for the long haul (set of principles:
-longevity) and a future trainer has a written schema, not folklore.
+The durable output of the brain is an append-only log of **records**, one per
+supervision cycle, on the laptop (never on router flash).
 
-The canonical serializer/parser is `sovereign_core::record`
-(`write_record` / `parse_record`); this file documents what they emit. If the two
-ever disagree, the code is authoritative and this file is the bug.
+**Architecture.** The format is defined generically by the **`sovds` toolkit**
+(`sovds::record`, `write_record`/`parse_record`), which owns the *framing* tokens
+(`t ts probed class src inject`). The router plugs in the rest — its observation
+and annotation tokens — through `sovereign_core::routerdomain::RouterDomain`. So
+this document describes the router *instance* of a generic format; the generic
+contract and the `Domain` trait are in [`crates/sovds/README.md`](crates/sovds/README.md).
+If code and doc disagree, the code is authoritative.
 
 ## Record line
 
-One record is a single line of space-separated `key=value` tokens, e.g.:
+One record is a single line of space-separated `key=value` tokens. Current layout —
+framing tokens first, then the domain payload (observation, then annotation):
 
 ```
-t=0 ts=1784355097 probed=1 wan=up:36418 sb=running tun=ok:147 dns=ok \
-nodes=1:143,2:232,3:440,4:137 wanok=1 load=11 mem=250116 active=1 \
-verdict=warming class=none state=healthy reason=nominal action=observe \
-outcome=- src=live
+t=0 ts=1784399235 probed=1 class=none src=live wan=up:80556 sb=running \
+tun=ok:131 dns=ok nodes=1:241,2:465,3:119 wanok=1 load=0 mem=238944 active=3 \
+verdict=warming state=healthy reason=nominal action=observe outcome=-
 ```
 
-(shown wrapped; a real record is one physical line, no trailing newline before the
-recorder adds it). Tokens appear in the order below. A `-` value means "not
-measured / not applicable", never a fake zero.
+**The parser is order-tolerant.** Records written by the older layout (observation
+before `class`, `src`/`inject` at the end) still load unchanged — a mixed-era
+corpus parses with zero skips. Token *order* is not part of the contract; the set
+of keys and their value grammar is. A `-` value means "not measured / not
+applicable", never a fake zero.
+
+Framing tokens (toolkit-owned) are the first rows below; the rest are the router's
+observation (`wan`…`active`) and annotation (`verdict`…`outcome`).
 
 | key | type / values | unit | meaning |
 |-----|---------------|------|---------|

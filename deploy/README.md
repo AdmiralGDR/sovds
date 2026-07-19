@@ -55,10 +55,14 @@ journalctl --user -u sovereign-collector.service -f
 The dataset must not go blind when the laptop is away (a real 74.8 h gap
 motivated this). Two halves:
 
+- **`deploy/router/telemetry.sh`** — the **single source** of the telemetry
+  contract (what is gathered, how each token is named). The laptop collector embeds
+  it at compile time (`include_str!`) and the probe below sources it, so the two can
+  never diverge (the principle). Deploy to `/usr/bin/sovereign-telemetry.sh`.
 - **`deploy/router/sovereign-probe`** — busybox script on the router (cron,
-  1/min): samples the same telemetry contract into `/tmp/sovereign-buffer.log`
-  (tmpfs = RAM only, ring-bounded at 4320 lines ≈ 3 days; router flash and the
-  user's "data lives on the laptop" rule are respected).
+  1/min): runs `sovereign-telemetry.sh` and folds its output into
+  `/tmp/sovereign-buffer.log` (tmpfs = RAM only, ring-bounded ≈ 14 days; router
+  flash and the "data lives on the laptop" rule are respected).
 - **`sovereign-backfill`** (+ `sovereign-backfill.{service,timer}`, every 15 min
   and 2 min after boot): drains the buffer loss-free (leftover `.drain` is folded
   in; remote delete only after local append), validates each line through the
@@ -67,6 +71,7 @@ motivated this). Two halves:
   `src=backfill` so analysis can distinguish provenance; nothing is actuated
   (`outcome=-`).
 
-Install (router): copy `deploy/router/sovereign-probe` to `/usr/bin/`, add cron
-`* * * * * /usr/bin/sovereign-probe`. Install (laptop): the two units above,
-then `systemctl --user enable --now sovereign-backfill.timer`.
+Install (router): copy `deploy/router/telemetry.sh` to
+`/usr/bin/sovereign-telemetry.sh` and `deploy/router/sovereign-probe` to
+`/usr/bin/`, add cron `* * * * * /usr/bin/sovereign-probe`. Install (laptop): the
+two units above, then `systemctl --user enable --now sovereign-backfill.timer`.

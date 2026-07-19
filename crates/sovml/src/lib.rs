@@ -12,6 +12,14 @@
 //! be compared head-to-head against hand-written ones (the principle: metrics before
 //! theories).
 //!
+//! The second model is a **random forest** ([`forest`]): an ensemble of trees, each
+//! grown on a bootstrap resample and a random feature subspace, that predicts by
+//! majority vote. It keeps the tree's integer, bounded, reproducible nature (all
+//! randomness comes from a seeded [`rng`], the internal charter the principle) while generalising far
+//! better on noisy, imbalanced data. A [`model::Model`] wraps either kind behind one
+//! type so a training loop can save, reload and compare "the best model so far"
+//! without knowing which it is — the seam that makes the advantage *cumulative*.
+//!
 //! Training links `std` (it sorts and grows a `Vec`); **inference is `no_std`** — a
 //! trained tree is a flat arena of nodes you can walk on any target, including the
 //! device the data came from.
@@ -29,8 +37,14 @@
 // allocator — but never `std`. `no_std + alloc` runs on any target with a heap.
 extern crate alloc;
 
+pub mod forest;
 pub mod metrics;
+pub mod model;
+pub mod rng;
 pub mod tree;
 
+pub use forest::{train_forest, ForestConfig, RandomForest};
 pub use metrics::Metrics;
-pub use tree::{DecisionTree, TreeConfig};
+pub use model::Model;
+pub use rng::Rng;
+pub use tree::{train, train_subspace, DecisionTree, TreeConfig};

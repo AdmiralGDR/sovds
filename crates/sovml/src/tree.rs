@@ -7,6 +7,7 @@
 //! bounded (the principle). A trained tree is a flat arena of nodes; walking it to
 //! [predict](DecisionTree::predict) needs nothing but the core (`no_std`).
 
+use crate::rng::Rng;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt::Write as _;
@@ -239,19 +240,60 @@ impl DecisionTree {
 /// `0..n_classes`. Deterministic. `n_classes` is clamped to [`MAX_CLASSES`].
 #[must_use]
 pub fn train(rows: &[Vec<i64>], labels: &[u32], n_classes: usize, cfg: TreeConfig) -> DecisionTree {
+    // mtry == 0 means "consider every feature at every split" — a plain,
+    // fully-deterministic CART tree that never touches the generator.
+    let mut rng = Rng::new(0);
+    train_subspace(rows, labels, n_classes, cfg, 0, &mut rng)
+}
+
+/// Train a tree that considers only a random subspace of `mtry` features at each
+/// split — the per-node feature bagging that decorrelates the trees of a
+/// [`crate::forest::RandomForest`]. `mtry == 0` (or `>= n_features`) falls back to
+/// all features, making the result identical to [`train`] and independent of `rng`.
+///
+/// `rows[i]` is the feature vector of sample `i`; `labels[i]` its class index in
+/// `0..n_classes`. Deterministic for a given `rng` stream. `n_classes` is clamped
+/// to [`MAX_CLASSES`].
+#[must_use]
+pub fn train_subspace(
+    rows: &[Vec<i64>],
+    labels: &[u32],
+    n_classes: usize,
+    cfg: TreeConfig,
+    mtry: usize,
+    rng: &mut Rng,
+) -> DecisionTree {
     let n_classes = n_classes.clamp(1, MAX_CLASSES);
     let n_features = rows.iter().map(Vec::len).max().unwrap_or(0);
     let indices: Vec<usize> = (0..rows.len().min(labels.len())).collect();
 
     let mut nodes: Vec<Node> = Vec::new();
     let root = build(
-        &indices, 0, rows, labels, n_features, n_classes, cfg, &mut nodes,
+        &indices, 0, rows, labels, n_features, mtry, n_classes, cfg, rng, &mut nodes,
     );
     DecisionTree {
         nodes,
         root,
         n_classes,
     }
+}
+
+/// Choose the candidate features for one split: all of `0..n_features` when
+/// `mtry` is 0 or covers them all (deterministic, no `rng` use), otherwise a random
+/// `mtry`-subset via a partial Fisher–Yates shuffle.
+fn select_features(n_features: usize, mtry: usize, rng: &mut Rng) -> Vec<usize> {
+    if mtry == 0 || mtry >= n_features {
+        return (0..n_features).collect();
+    }
+    let mut pool: Vec<usize> = (0..n_features).collect();
+    // Partial shuffle: draw `mtry` distinct features into the front of the pool.
+    for i in 0..mtry {
+        let span = n_features.saturating_sub(i);
+        let pick = i.saturating_add(rng.below(span));
+        pool.swap(i, pick.min(n_features.saturating_sub(1)));
+    }
+    pool.truncate(mtry);
+    pool
 }
 
 /// Recursively build a subtree over `indices`; push its nodes and return the index
@@ -263,8 +305,10 @@ fn build(
     rows: &[Vec<i64>],
     labels: &[u32],
     n_features: usize,
+    mtry: usize,
     n_classes: usize,
     cfg: TreeConfig,
+    rng: &mut Rng,
     nodes: &mut Vec<Node>,
 ) -> usize {
     let (counts, total) = class_counts(indices, labels, n_classes);
@@ -282,11 +326,12 @@ fn build(
         return leaf(nodes);
     }
 
+    let candidates = select_features(n_features, mtry, rng);
     let Some((feature, threshold)) = best_split(
         indices,
         rows,
         labels,
-        n_features,
+        &candidates,
         n_classes,
         cfg.min_samples_leaf,
     ) else {
@@ -319,8 +364,10 @@ fn build(
         rows,
         labels,
         n_features,
+        mtry,
         n_classes,
         cfg,
+        rng,
         nodes,
     );
     let ri = build(
@@ -329,8 +376,10 @@ fn build(
         rows,
         labels,
         n_features,
+        mtry,
         n_classes,
         cfg,
+        rng,
         nodes,
     );
     nodes.push(Node::Split {
@@ -382,7 +431,7 @@ fn best_split(
     indices: &[usize],
     rows: &[Vec<i64>],
     labels: &[u32],
-    n_features: usize,
+    features: &[usize],
     n_classes: usize,
     min_leaf: usize,
 ) -> Option<(usize, i64)> {
@@ -395,7 +444,7 @@ fn best_split(
 
     let mut best: Option<(usize, i64, u64)> = None;
 
-    for feature in 0..n_features {
+    for &feature in features {
         // Sort the sample indices by this feature's value.
         let mut order: Vec<usize> = indices.to_vec();
         order.sort_by_key(|&i| feature_value(rows, i, feature));

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/sovds", "crates/core", "crates/adapters", "crates/app"]
+members = ["crates/sovml", "crates/sovds", "crates/core", "crates/adapters", "crates/app"]
 
 # Quality gates as code (the internal engineering charter, the principle). These are not style preferences;
 # they are the physical encoding of the principle (no panics, bounded execution).

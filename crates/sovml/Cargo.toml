@@ -1,0 +1,24 @@
+[package]
+name = "sovml"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96.1"
+description = "Sovereign, zero-dependency, from-scratch machine learning — interpretable integer decision trees for tabular fault data. no_std inference."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/dev42/sovereign"
+keywords = ["machine-learning", "decision-tree", "no_std", "interpretable", "sovereign"]
+categories = ["no-std", "science", "algorithms"]
+
+[features]
+# no_std, zero-dependency by default (the principle). Inference needs nothing but the
+# core; `std` turns on training (which uses Vec/sort) and the readable tree dump.
+default = ["std"]
+std = []
+
+[dependencies]
+# Intentionally empty and it must stay that way (the internal engineering charter, the principle & I): a
+# from-scratch model with no ML framework underneath — no ndarray, no linfa, no
+# torch. The math is ours, integer, and reproducible.
+
+[lints]
+workspace = true

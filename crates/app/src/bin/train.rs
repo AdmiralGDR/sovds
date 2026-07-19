@@ -1,35 +1,40 @@
-//! `sovereign-train` — the bridge from the sovds dataset to a sovml model.
+//! `sovereign-train` — the bridge from the sovds dataset to a sovml model, with a
+//! **cumulative** training loop.
 //!
-//! Trains an interpretable decision tree on the collected corpus and evaluates it
-//! against a held-out slice. The features are the router's raw signals; the label
-//! is the diagnosed `class`. So this first model learns to **reproduce the rules
-//! from raw telemetry** — the honest v1: its accuracy validates the whole
-//! train→infer→evaluate pipeline, its errors reveal where raw signals do not
-//! capture the adaptive-refined diagnosis, and the same pipeline is ready to train
-//! on ground-truth (`inject=`) labels as they accrue. It prints the learned tree
-//! (interpretable, kin to the hand-written rules).
+//! Features are the router's raw signals; the label is the diagnosed `class`. This
+//! first model learns to reproduce the rules from raw telemetry (the honest v1: it
+//! validates the whole train→infer→evaluate loop, and its errors reveal where raw
+//! signals miss the adaptive-refined diagnosis). The same pipeline is ready to
+//! train on ground-truth (`inject=`) labels as they accrue.
 //!
-//! Usage: `sovereign-train [log] [--depth N]`.
+//! With `--save <model>`, the advantage **accumulates**: each run trains a
+//! candidate, evaluates it and the currently-saved model on the same held-out
+//! split, and keeps whichever scores higher (macro-F1 — the imbalance-honest
+//! metric, the principle). Run it daily (cron) and the saved model only ever improves as
+//! the dataset grows; `--history <log>` records the trajectory so "better every
+//! day" is a fact you can read.
+//!
+//! Usage: `sovereign-train [log] [--depth N] [--save model.tree] [--history hist.log]`.
 
 use sovds::domain::Domain;
 use sovds::record::Record;
 use sovereign_adapters::dataset;
 use sovereign_core::failure::FailureClass;
 use sovereign_core::routerdomain::RouterDomain;
+use sovml::metrics::Metrics;
 use sovml::tree::{train, TreeConfig};
+use sovml::DecisionTree;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let log = args
-        .iter()
-        .find(|a| !a.starts_with("--"))
-        .map(PathBuf::from)
-        .unwrap_or_else(default_log_path);
+    let log = positional_log(&args).unwrap_or_else(default_log_path);
     let depth = flag_value(&args, "--depth")
         .and_then(|v| v.parse::<u32>().ok())
         .unwrap_or(8);
+    let save = flag_value(&args, "--save").map(PathBuf::from);
+    let history = flag_value(&args, "--history").map(PathBuf::from);
 
     let generations = std::env::var("SOVEREIGN_LOG_GENERATIONS")
         .ok()
@@ -44,7 +49,6 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    // Bridge sovds -> sovml: each record becomes (raw signals, class index).
     let faults = RouterDomain::faults();
     let n_classes = faults.len();
     let rows: Vec<Vec<i64>> = corpus.records.iter().map(features).collect();
@@ -54,70 +58,97 @@ fn main() -> ExitCode {
         .map(|r| class_index(r.class, faults))
         .collect();
 
-    // Temporal split: train on the older 70%, test on the newer 30% (no leakage of
-    // the future into the past).
+    // Temporal split: train on the older 70%, test on the newer 30%.
     let n = rows.len();
-    let cut = n.saturating_mul(7).checked_div(10).unwrap_or(0);
-    let (train_rows, test_rows) = rows.split_at(cut.min(n));
-    let (train_labels, test_labels) = labels.split_at(cut.min(n));
+    let cut = n.saturating_mul(7).checked_div(10).unwrap_or(0).min(n);
+    let (train_rows, test_rows) = rows.split_at(cut);
+    let (train_labels, test_labels) = labels.split_at(cut);
 
     let cfg = TreeConfig {
         max_depth: depth,
         min_samples_leaf: 8,
     };
-    let tree = train(train_rows, train_labels, n_classes, cfg);
-
-    // Evaluate on the held-out slice: overall accuracy + per-class recall.
-    let mut correct = 0usize;
-    let mut per_class_total = vec![0usize; n_classes];
-    let mut per_class_hit = vec![0usize; n_classes];
-    for (row, &label) in test_rows.iter().zip(test_labels.iter()) {
-        let pred = tree.predict(row);
-        let li = label as usize;
-        if let Some(t) = per_class_total.get_mut(li) {
-            *t = t.saturating_add(1);
-        }
-        if pred == label {
-            correct = correct.saturating_add(1);
-            if let Some(h) = per_class_hit.get_mut(li) {
-                *h = h.saturating_add(1);
-            }
-        }
-    }
-    let tested = test_rows.len();
-    let acc = pct(correct, tested);
+    let candidate = train(train_rows, train_labels, n_classes, cfg);
+    let cand_metrics = evaluate(&candidate, test_rows, test_labels, n_classes);
+    let cand_f1 = cand_metrics.macro_f1_pm();
 
     println!(
         "Trained on {} samples, tested on {} (temporal 70/30 split).",
         train_rows.len(),
-        tested
+        test_rows.len()
     );
     println!(
-        "Tree: {} nodes, depth<= {depth}. Overall agreement with the rules on \
-         held-out data: {acc}%.\n",
-        tree.size()
+        "Candidate: {} nodes; accuracy {}‰, macro-F1 {}‰ over {} classes present.",
+        candidate.size(),
+        cand_metrics.accuracy_pm(),
+        cand_f1,
+        cand_metrics.classes_present(),
     );
-    println!("Per-class recall on held-out (where <100% the raw signals miss the");
-    println!("adaptive-refined diagnosis — an honest map of what telemetry captures):");
-    for (i, &f) in faults.iter().enumerate() {
-        let total = per_class_total.get(i).copied().unwrap_or(0);
-        if total == 0 {
-            continue;
-        }
-        let hit = per_class_hit.get(i).copied().unwrap_or(0);
-        println!(
-            "  {:<14} {:>5}/{:<5} ({}%)",
-            label_of(f),
-            hit,
-            total,
-            pct(hit, total)
-        );
-    }
+    print_per_class(&cand_metrics, faults);
 
-    let names = RouterDomain::signal_names();
-    let class_names: Vec<&str> = faults.iter().map(|&f| label_of(f)).collect();
-    println!("\nLearned tree (the rules, re-derived from data):\n");
-    print!("{}", tree.render(names, &class_names));
+    // Cumulative loop: keep the better of {saved model, candidate}.
+    if let Some(save_path) = &save {
+        let incumbent = std::fs::read_to_string(save_path)
+            .ok()
+            .and_then(|t| DecisionTree::deserialize(&t));
+        let inc_f1 = incumbent
+            .as_ref()
+            .map(|m| evaluate(m, test_rows, test_labels, n_classes).macro_f1_pm());
+
+        let keep_candidate = inc_f1.is_none_or(|prev| cand_f1 >= prev);
+        let best_f1 = if keep_candidate {
+            if let Err(e) = std::fs::write(save_path, candidate.serialize().as_bytes()) {
+                eprintln!("sovereign-train: could not save model: {e}");
+            }
+            cand_f1
+        } else {
+            inc_f1.unwrap_or(0)
+        };
+
+        match inc_f1 {
+            None => println!(
+                "\nNo saved model yet → saved the candidate as the first best ({cand_f1}‰)."
+            ),
+            Some(prev) if keep_candidate => println!(
+                "\nCandidate macro-F1 {cand_f1}‰ >= saved {prev}‰ → replaced the saved model."
+            ),
+            Some(prev) => println!(
+                "\nCandidate macro-F1 {cand_f1}‰ < saved {prev}‰ → kept the saved model (no regression)."
+            ),
+        }
+
+        // Record the trajectory so "better every day" is a fact you can read.
+        if let Some(hist) = &history {
+            let last_ts = corpus
+                .records
+                .iter()
+                .map(|r| r.wall_time)
+                .max()
+                .unwrap_or(0);
+            let line = format!(
+                "n={} ts={} cand_f1={} best_f1={} acc={}\n",
+                corpus.records.len(),
+                last_ts,
+                cand_f1,
+                best_f1,
+                cand_metrics.accuracy_pm(),
+            );
+            use std::io::Write;
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(hist)
+            {
+                let _ = f.write_all(line.as_bytes());
+            }
+            print_trajectory(hist);
+        }
+    } else {
+        let names = RouterDomain::signal_names();
+        let class_names: Vec<&str> = faults.iter().map(|&f| label_of(f)).collect();
+        println!("\nLearned tree (the rules, re-derived from data):\n");
+        print!("{}", candidate.render(names, &class_names));
+    }
 
     eprintln!(
         "\n({} records; {} skipped)",
@@ -127,7 +158,48 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// A record's raw signals as an integer feature row.
+/// Evaluate a tree on a held-out slice into a confusion-matrix [`Metrics`].
+fn evaluate(tree: &DecisionTree, rows: &[Vec<i64>], labels: &[u32], n_classes: usize) -> Metrics {
+    let mut m = Metrics::new(n_classes);
+    for (row, &label) in rows.iter().zip(labels.iter()) {
+        m.record(label, tree.predict(row));
+    }
+    m
+}
+
+fn print_per_class(m: &Metrics, faults: &[FailureClass]) {
+    println!("Per class (held-out): recall / F1 (‰) — where <1000 raw signals miss the diagnosis:");
+    for (i, &f) in faults.iter().enumerate() {
+        let r = m.recall_pm(i);
+        let f1 = m.f1_pm(i);
+        // Only show classes that occurred in the test slice.
+        if r > 0 || f1 > 0 || m.precision_pm(i) > 0 {
+            println!("  {:<14} recall {:>4}  F1 {:>4}", label_of(f), r, f1);
+        }
+    }
+}
+
+/// Print the best-macro-F1 trajectory from the history log — the cumulative record.
+fn print_trajectory(hist: &std::path::Path) {
+    let Ok(text) = std::fs::read_to_string(hist) else {
+        return;
+    };
+    println!("\nCumulative trajectory (best macro-F1 as the dataset grows):");
+    for line in text.lines() {
+        let n = field(line, "n=");
+        let best = field(line, "best_f1=");
+        if let (Some(n), Some(best)) = (n, best) {
+            println!("  n={n:<6} best-F1={best}‰");
+        }
+    }
+}
+
+fn field(line: &str, key: &str) -> Option<String> {
+    line.split_whitespace()
+        .find_map(|t| t.strip_prefix(key))
+        .map(str::to_string)
+}
+
 fn features(r: &Record<RouterDomain>) -> Vec<i64> {
     let mut row = Vec::new();
     RouterDomain::signals(&r.obs, &mut |v| row.push(v));
@@ -153,8 +225,25 @@ fn label_of(f: FailureClass) -> &'static str {
     }
 }
 
-fn pct(hit: usize, total: usize) -> usize {
-    hit.saturating_mul(100).checked_div(total).unwrap_or(0)
+/// The first positional argument (the log path), skipping value-taking flags and
+/// their arguments so `--save X` does not get mistaken for the log.
+fn positional_log(args: &[String]) -> Option<PathBuf> {
+    let value_flags = ["--depth", "--save", "--history"];
+    let mut skip = false;
+    for a in args {
+        if skip {
+            skip = false;
+            continue;
+        }
+        if a.starts_with("--") {
+            if value_flags.contains(&a.as_str()) {
+                skip = true;
+            }
+            continue;
+        }
+        return Some(PathBuf::from(a));
+    }
+    None
 }
 
 fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {

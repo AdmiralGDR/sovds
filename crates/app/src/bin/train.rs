@@ -18,11 +18,16 @@
 //! tree; both kinds compete in the same cumulative loop on held-out macro-F1, so an
 //! ensemble only replaces the saved tree if it genuinely scores higher.
 //!
+//! Features are temporal by default (each raw signal expands to raw value +
+//! deviation-from-EWMA-baseline + rate-of-change), so the model sees the same
+//! history the adaptive layer does. `--base` trains on raw per-record signals only.
+//!
 //! Usage:
-//! `sovereign-train [log] [--depth N] [--forest [N]] [--save model] [--history hist.log]`.
+//! `sovereign-train [log] [--depth N] [--forest [N]] [--base] [--save model] [--history hist.log]`.
 
 use sovds::domain::Domain;
 use sovds::record::Record;
+use sovds::window::{self, WindowConfig, WindowFeatures};
 use sovereign_adapters::dataset;
 use sovereign_core::failure::FailureClass;
 use sovereign_core::routerdomain::RouterDomain;
@@ -53,6 +58,10 @@ fn main() -> ExitCode {
     } else {
         None
     };
+    // Temporal features (EWMA baseline + deviation + rate per channel) are ON by
+    // default — they give the model the history the adaptive layer sees. --base
+    // trains on raw per-record signals only, for a head-to-head comparison.
+    let base_features = args.iter().any(|a| a == "--base");
 
     let generations = std::env::var("SOVEREIGN_LOG_GENERATIONS")
         .ok()
@@ -69,7 +78,31 @@ fn main() -> ExitCode {
 
     let faults = RouterDomain::faults();
     let n_classes = faults.len();
-    let rows: Vec<Vec<i64>> = corpus.records.iter().map(features).collect();
+    let rows: Vec<Vec<i64>> = if base_features {
+        corpus.records.iter().map(features).collect()
+    } else {
+        // Stateful, causal transform over the chronological stream; reset at each
+        // run boundary (tick 0) so one run's baseline never leaks into the next.
+        let mut wf = WindowFeatures::new(WindowConfig::new());
+        corpus
+            .records
+            .iter()
+            .map(|r| {
+                if r.tick.0 == 0 {
+                    wf.reset();
+                }
+                wf.transform(&features(r))
+            })
+            .collect()
+    };
+    let feat_names: Vec<String> = if base_features {
+        RouterDomain::signal_names()
+            .iter()
+            .map(|s| String::from(*s))
+            .collect()
+    } else {
+        window::feature_names(RouterDomain::signal_names())
+    };
     let labels: Vec<u32> = corpus
         .records
         .iter()
@@ -104,9 +137,15 @@ fn main() -> ExitCode {
     let cand_f1 = cand_metrics.macro_f1_pm();
 
     println!(
-        "Trained on {} samples, tested on {} (temporal 70/30 split).",
+        "Trained on {} samples, tested on {} (temporal 70/30 split); {} features ({}).",
         train_rows.len(),
-        test_rows.len()
+        test_rows.len(),
+        feat_names.len(),
+        if base_features {
+            "raw signals"
+        } else {
+            "raw + EWMA-deviation + rate"
+        },
     );
     println!(
         "Candidate: {} ({} nodes); accuracy {}‰, macro-F1 {}‰ over {} classes present.",
@@ -118,11 +157,29 @@ fn main() -> ExitCode {
     );
     print_per_class(&cand_metrics, faults);
 
-    // Cumulative loop: keep the better of {saved model, candidate}.
+    // Cumulative loop: keep the better of {saved model, candidate}. Two models are
+    // only comparable if they share a feature schema — an incumbent trained on a
+    // different feature recipe would score meaningless garbage on this run's test
+    // set (its feature indices point elsewhere). We stamp the schema in a sidecar
+    // and only compare within a matching schema; a changed recipe re-baselines the
+    // lineage honestly (the principle: no invalid comparison masquerading as progress).
     if let Some(save_path) = &save {
-        let incumbent = std::fs::read_to_string(save_path)
+        let tag = schema_tag(base_features, feat_names.len());
+        let meta_path = schema_sidecar(save_path);
+        let prior_tag = std::fs::read_to_string(&meta_path)
             .ok()
-            .and_then(|t| Model::deserialize(&t));
+            .map(|s| s.trim().to_string());
+        let model_existed = std::fs::metadata(save_path).is_ok();
+        let schema_matches = prior_tag.as_deref() == Some(tag.as_str());
+
+        // Only load the incumbent when it is comparable on this run's features.
+        let incumbent = if schema_matches {
+            std::fs::read_to_string(save_path)
+                .ok()
+                .and_then(|t| Model::deserialize(&t))
+        } else {
+            None
+        };
         let inc_f1 = incumbent
             .as_ref()
             .map(|m| evaluate(m, test_rows, test_labels, n_classes).macro_f1_pm());
@@ -132,12 +189,20 @@ fn main() -> ExitCode {
             if let Err(e) = std::fs::write(save_path, candidate.serialize().as_bytes()) {
                 eprintln!("sovereign-train: could not save model: {e}");
             }
+            if let Err(e) = std::fs::write(&meta_path, tag.as_bytes()) {
+                eprintln!("sovereign-train: could not save model schema: {e}");
+            }
             cand_f1
         } else {
             inc_f1.unwrap_or(0)
         };
 
         match inc_f1 {
+            None if model_existed && !schema_matches => println!(
+                "\nFeature schema changed ({} → {tag}) → re-baselining the lineage with the \
+                 candidate ({cand_f1}‰); the old model is not comparable on the new features.",
+                prior_tag.as_deref().unwrap_or("unknown"),
+            ),
             None => println!(
                 "\nNo saved model yet → saved the candidate as the first best ({cand_f1}‰)."
             ),
@@ -178,10 +243,10 @@ fn main() -> ExitCode {
     } else {
         match &candidate {
             Model::Tree(tree) => {
-                let names = RouterDomain::signal_names();
+                let names: Vec<&str> = feat_names.iter().map(String::as_str).collect();
                 let class_names: Vec<&str> = faults.iter().map(|&f| label_of(f)).collect();
                 println!("\nLearned tree (the rules, re-derived from data):\n");
-                print!("{}", tree.render(names, &class_names));
+                print!("{}", tree.render(&names, &class_names));
             }
             Model::Forest(forest) => {
                 println!(
@@ -242,6 +307,20 @@ fn field(line: &str, key: &str) -> Option<String> {
     line.split_whitespace()
         .find_map(|t| t.strip_prefix(key))
         .map(str::to_string)
+}
+
+/// A short identifier for the feature representation a model was trained on. Two
+/// models are only comparable if these match (same recipe, same column count).
+fn schema_tag(base_features: bool, n_features: usize) -> String {
+    let mode = if base_features { "base" } else { "temporal" };
+    format!("{mode}:{n_features}")
+}
+
+/// The sidecar path holding a saved model's [`schema_tag`] (e.g. `best.model.meta`).
+fn schema_sidecar(save_path: &std::path::Path) -> PathBuf {
+    let mut s = save_path.to_path_buf().into_os_string();
+    s.push(".meta");
+    PathBuf::from(s)
 }
 
 fn features(r: &Record<RouterDomain>) -> Vec<i64> {

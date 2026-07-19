@@ -106,6 +106,10 @@ sh scripts/reproducible-build.sh # the principle: all 7 binaries byte-identical 
 - `sovereign-export [log] [out.tsv]` — flatten the dataset into a **TSV feature
   table** (`t ts probed class inject <raw signals>`) any tool (pandas, DuckDB, a
   training pipeline) can read. Raw signals only, no feature engineering (the principle).
+- `sovereign-anomaly [log] [--top N]` — **unsupervised** scan: score every record
+  against an online baseline of its signals and surface the ones the rules called
+  healthy (`class=none`) but that look statistically unusual — rule-gap candidates
+  for human review. Never actuates.
 - `sovereign-replay` — replay the corpus under different adaptive configs (tuning
   as measurement, not guesswork).
 - `sovereign-backfill` — loss-free drain of the router's fallback buffer.

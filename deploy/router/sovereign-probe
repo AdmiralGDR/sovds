@@ -1,81 +1,37 @@
 #!/bin/sh
 # sovereign-probe — bounded RAM telemetry buffer on the router.
 #
-# The brain (laptop) is the system of record for the dataset, but it can be off
-# or asleep. This probe samples the SAME telemetry contract the brain collects,
-# once a minute via cron, into a strictly bounded ring buffer in /tmp (tmpfs =
-# RAM only; router flash is never touched — the durable dataset lives on the
-# laptop, which drains this buffer via sovereign-backfill).
+# The brain (laptop) is the system of record, but it can be off or asleep. This
+# probe samples the SHARED telemetry (sovereign-telemetry.sh — the single source,
+# also run verbatim by the laptop collector; the internal engineering charter the principle) once a minute via
+# cron, into a strictly bounded ring buffer in /tmp (tmpfs = RAM only; router flash
+# is never touched — the durable dataset lives on the laptop, which drains this
+# buffer via sovereign-backfill).
 #
 # the internal engineering charter discipline, within busybox limits:
-#   * Bounded: every network call has a hard timeout; the buffer is capped at
-#     MAX_LINES (~14 days at 1/min, ~2.9 MB of RAM at ~145 B/line) — oldest lines
-#     are dropped. Sized from evidence: the largest observed laptop-off gap was
-#     3.12 days, so 14 days is >4x margin, and 2.9 MB is <2% of the router's
-#     ~233 MB free tmpfs. It only ever fills during a multi-day laptop-off; when
-#     the laptop is on, sovereign-backfill drains it every 15 min so it stays tiny.
+#   * Bounded: telemetry.sh gives every network call a hard timeout; the buffer is
+#     capped at MAX_LINES (~14 days at 1/min, ~2.9 MB of RAM at ~145 B/line) —
+#     oldest lines are dropped. Sized from evidence (largest observed laptop-off
+#     gap was 3.12 days → >4x margin; 2.9 MB is <2% of ~233 MB free tmpfs).
 #     Residual bound (accepted): a >14-day absence, or a router reboot mid-outage
-#     (tmpfs is RAM), still loses buffered samples — flash is deliberately not used
-#     (wear + "the dataset lives on the laptop").
+#     (tmpfs is RAM), still loses buffered samples — flash is deliberately not used.
 #   * Graceful: a failed sub-probe reports its own token (tunnel=dead etc.);
 #     nothing here can fail loudly or hang the cron slot.
-#   * One line per sample, self-describing `key=value` tokens — the exact
-#     snapshot contract the brain's parser already validates.
+#   * One line per sample, self-describing `key=value` tokens — the exact snapshot
+#     contract the brain's parser validates.
 
 BUF=/tmp/sovereign-buffer.log
 MAX_LINES=20160
+TELEM=/usr/bin/sovereign-telemetry.sh
 
-S=$(uci -q get podkop.settings.yacd_secret_key)
 ts=$(date +%s)
+# Run the shared telemetry and fold its one-token-per-line output into a single
+# space-separated buffer line (ts= prefix gives the global timeline).
+line=$(sh "$TELEM" 2>/dev/null | tr '\n' ' ')
+echo "ts=$ts $line" >> "$BUF"
 
-if ubus call network.interface.wan status 2>/dev/null | grep -q '"up": true'; then
-    U=$(ubus call network.interface.wan status 2>/dev/null \
-        | sed -n 's/.*"uptime": \([0-9]*\).*/\1/p' | head -1)
-    wan="wan=up:${U:-0}"
-else
-    wan="wan=down"
-fi
-
-if pidof sing-box >/dev/null 2>&1; then sb="singbox=running"; else sb="singbox=dead"; fi
-
-D=$(curl -s -m 8 -H "Authorization: Bearer $S" \
-    "http://192.168.1.1:9090/proxies/vless_out-out/delay?url=http://cp.cloudflare.com/generate_204&timeout=6000" \
-    2>/dev/null | sed -n 's/.*"delay":\([0-9]*\).*/\1/p')
-if [ -n "$D" ]; then tun="tunnel=ok:$D"; else tun="tunnel=dead"; fi
-
-G=$(curl -s -m 8 -H "Authorization: Bearer $S" \
-    "http://192.168.1.1:9090/group/vless_out-out/delay?url=http://cp.cloudflare.com/generate_204&timeout=6000" \
-    2>/dev/null)
-nodes=$(echo "$G" | tr ',{}' '\n' \
-    | sed -n 's/.*"vless_out-\([0-9][0-9]*\)-out": *\([0-9][0-9]*\).*/node=\1:\2/p' \
-    | tr '\n' ' ')
-
-if nslookup youtube.com 127.0.0.1 2>/dev/null | grep -qE 'Address[0-9]*: *198\.1[89]\.'; then
-    dns="dns=ok"
-else
-    dns="dns=failing"
-fi
-
-if curl -s -o /dev/null -m 5 http://1.1.1.1 2>/dev/null || curl -s -o /dev/null -m 5 http://8.8.8.8 2>/dev/null; then wok="wanok=1"; else wok="wanok=0"; fi
-load=$(awk '{ printf "load=%d", $1 * 100 }' /proc/loadavg 2>/dev/null)
-mem=$(awk '/MemAvailable/ { printf "mem=%d", $2 }' /proc/meminfo 2>/dev/null)
-A=$(curl -s -m 8 -H "Authorization: Bearer $S" "http://192.168.1.1:9090/proxies/vless_out-urltest-out" 2>/dev/null | sed -n 's/.*"now": *"vless_out-\([0-9][0-9]*\)-out".*/\1/p')
-active=""; [ -n "$A" ] && active="active=$A"
-
-# Injection label: if a deliberate-fault marker is active (unexpired), stamp the
-# sample with the ground-truth class, so buffered records during a laptop-off
-# injection are also distinguishable from real faults.
-inject=""
-if [ -f /tmp/sovereign-inject ]; then
-    IC=$(sed -n 's/.*class=\([a-z_]*\).*/\1/p' /tmp/sovereign-inject)
-    IU=$(sed -n 's/.*until=\([0-9]*\).*/\1/p' /tmp/sovereign-inject)
-    [ -n "$IC" ] && [ -n "$IU" ] && [ "$ts" -lt "$IU" ] && inject="inject=$IC"
-fi
-
-echo "ts=$ts $wan $sb $tun $dns $nodes $wok $load $mem $active $inject" >> "$BUF"
-
-# Ring bound: keep only the newest MAX_LINES (atomic swap; a failed swap leaves
-# the old buffer intact rather than truncating it).
+# Ring bound: keep only the newest MAX_LINES (atomic swap; a failed swap leaves the
+# old buffer intact rather than truncating it).
 lines=$(wc -l < "$BUF" 2>/dev/null || echo 0)
 if [ "$lines" -gt "$MAX_LINES" ]; then
     tail -n "$MAX_LINES" "$BUF" > "$BUF.new" 2>/dev/null && mv "$BUF.new" "$BUF"

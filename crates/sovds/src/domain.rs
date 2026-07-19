@@ -107,6 +107,25 @@ pub trait Domain: Copy + Eq + core::fmt::Debug {
     /// Returns [`ParseError::MissingField`] if a required observation field was
     /// never seen.
     fn finish(builder: Self::Builder) -> Result<(Self::Obs, Self::Annot), ParseError>;
+
+    /// Stable names of the observation's scalar **signals** — the numeric columns
+    /// of a flat feature table (see [`crate::export`]), also the inputs an anomaly
+    /// analysis would score. Purely raw values exposed from the observation, no
+    /// derived features (that is the model's job, not the toolkit's — the principle).
+    ///
+    /// Default: none. A domain that has no tabular signals, or does not need the
+    /// export, simply does not override this.
+    fn signal_names() -> &'static [&'static str] {
+        &[]
+    }
+
+    /// Emit the observation's scalar signal **values**, in the exact same order as
+    /// [`Self::signal_names`], via `sink`. Use a sentinel (`-1`) for "not measured"
+    /// so a column is always present (the principle: absence is explicit, never a fake
+    /// zero). Default: emits nothing.
+    fn signals(obs: &Self::Obs, sink: &mut dyn FnMut(i64)) {
+        let _ = (obs, sink);
+    }
 }
 
 #[cfg(test)]

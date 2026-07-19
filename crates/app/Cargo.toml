@@ -35,6 +35,10 @@ path = "src/bin/episodes.rs"
 name = "sovereign-inject"
 path = "src/bin/inject.rs"
 
+[[bin]]
+name = "sovereign-export"
+path = "src/bin/export.rs"
+
 [dependencies]
 sovereign-core = { path = "../core" }
 sovereign-adapters = { path = "../adapters" }

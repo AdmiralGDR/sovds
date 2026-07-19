@@ -31,6 +31,7 @@
 //! * [`record`] — the generic dataset record and its serialisation.
 //! * [`episode`] — segment a record stream into fault episodes (the analysis unit).
 //! * [`injection`] — per-window detection + rollback-safety over injected faults.
+//! * [`export`] — flatten a corpus into a TSV feature table for external tooling.
 //! * [`stats`] — integer fixed-point online estimators (EWMA, one-sided CUSUM).
 //!
 //! Behind the `std` feature (on by default): [`dataset`] (load a corpus),
@@ -43,6 +44,7 @@
 
 pub mod domain;
 pub mod episode;
+pub mod export;
 pub mod injection;
 pub mod record;
 pub mod stats;

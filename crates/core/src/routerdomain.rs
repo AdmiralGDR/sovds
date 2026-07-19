@@ -194,6 +194,65 @@ impl Domain for RouterDomain {
         };
         Ok((telemetry, annot))
     }
+
+    fn signal_names() -> &'static [&'static str] {
+        &[
+            "wan_up",
+            "singbox_up",
+            "tunnel_up",
+            "tunnel_ms",
+            "dns_ok",
+            "nodes_seen",
+            "wanok",
+            "load",
+            "mem",
+            "active",
+        ]
+    }
+
+    /// Raw scalar telemetry, one value per name above. `-1` means "not measured"
+    /// (a `-`/`Unknown`/dead signal), so a column is always present and honest.
+    fn signals(t: &Telemetry, sink: &mut dyn FnMut(i64)) {
+        sink(match t.wan {
+            Wan::Up { .. } => 1,
+            Wan::Down => 0,
+            Wan::Unknown => -1,
+        });
+        sink(match t.singbox {
+            Proc::Running => 1,
+            Proc::Dead => 0,
+            Proc::Unknown => -1,
+        });
+        sink(match t.tunnel {
+            Tunnel::Healthy { .. } | Tunnel::Degraded { .. } => 1,
+            Tunnel::Dead => 0,
+            Tunnel::Unknown => -1,
+        });
+        sink(match t.tunnel {
+            Tunnel::Healthy { latency } | Tunnel::Degraded { latency } => i64::from(latency.0),
+            Tunnel::Dead | Tunnel::Unknown => -1,
+        });
+        sink(match t.dns {
+            Dns::Ok => 1,
+            Dns::Failing => 0,
+            Dns::Unknown => -1,
+        });
+        let seen = t
+            .nodes
+            .iter()
+            .flatten()
+            .filter(|n| n.latency.is_some())
+            .count();
+        sink(u8::try_from(seen).map(i64::from).unwrap_or(-1));
+        sink(match t.aux.wan_reach {
+            WanReach::Ok => 1,
+            WanReach::Blackhole => 0,
+            WanReach::Unknown => -1,
+        });
+        sink(t.aux.load_centi.map(i64::from).unwrap_or(-1));
+        sink(t.aux.mem_free_kb.map(i64::from).unwrap_or(-1));
+        sink(t.aux.active.map(i64::from).unwrap_or(-1));
+    }
 }
 
 // --- serialization (moved verbatim from the old record module) ---------------

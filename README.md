@@ -103,6 +103,9 @@ sh scripts/reproducible-build.sh # the principle: all 7 binaries byte-identical 
   induced are stamped `inject=<class>` and stay distinguishable from real faults.
   Writes only a marker (it does not disrupt any service itself — inducing the fault
   is a separate, explicit step). `--status` / `--clear` manage it.
+- `sovereign-export [log] [out.tsv]` — flatten the dataset into a **TSV feature
+  table** (`t ts probed class inject <raw signals>`) any tool (pandas, DuckDB, a
+  training pipeline) can read. Raw signals only, no feature engineering (the principle).
 - `sovereign-replay` — replay the corpus under different adaptive configs (tuning
   as measurement, not guesswork).
 - `sovereign-backfill` — loss-free drain of the router's fallback buffer.

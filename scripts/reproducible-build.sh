@@ -27,7 +27,7 @@ export RUSTFLAGS
 
 # Every binary the user actually runs — the sovereignty guarantee must cover the
 # whole toolset, not only the supervisor.
-BINS="sovereign sovereign-inspect sovereign-replay sovereign-backfill sovereign-scenario sovereign-episodes sovereign-inject"
+BINS="sovereign sovereign-inspect sovereign-replay sovereign-backfill sovereign-scenario sovereign-episodes sovereign-inject sovereign-export"
 
 sha() {
     if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi

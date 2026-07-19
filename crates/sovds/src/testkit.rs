@@ -75,6 +75,13 @@ impl Domain for Svc {
     fn finish(b: Builder) -> Result<(u32, bool), ParseError> {
         Ok((b.load.ok_or(ParseError::MissingField)?, b.acted))
     }
+    fn signal_names() -> &'static [&'static str] {
+        &["load", "over"]
+    }
+    fn signals(obs: &u32, sink: &mut dyn FnMut(i64)) {
+        sink(i64::from(*obs));
+        sink(i64::from(*obs > 50));
+    }
 }
 
 /// Build a test record of `class` at `tick`/`wall`, healthy load, organic.

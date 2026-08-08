@@ -16,11 +16,14 @@ cargo build --release --locked
 install -m 755 target/release/sovereign ~/.local/bin/sovereign
 
 # 2. Data directory + askpass helper (prints the router root password; the
-#    password itself lives only in the 0600 file it reads).
+#    password itself lives only in a 0600 file you create yourself, OUTSIDE
+#    this repo — never commit a password file, never hardcode its path).
 mkdir -p ~/.local/share/sovereign
-cat > ~/.local/share/sovereign/askpass.sh <<'SH'
+ROUTER_PASSWORD_FILE="${ROUTER_PASSWORD_FILE:-$HOME/.config/sovereign/router-password.txt}"
+install -m 600 /dev/null "$ROUTER_PASSWORD_FILE"   # then put ONE line: password: <yours>
+cat > ~/.local/share/sovereign/askpass.sh <<SH
 #!/bin/bash
-grep -E '^password:' $ROUTER_PASSWORD_FILE | sed 's/^password:[[:space:]]*//' | tr -d '\r\n'; echo
+grep -E '^password:' '$ROUTER_PASSWORD_FILE' | sed 's/^password:[[:space:]]*//' | tr -d '\r\n'; echo
 SH
 chmod 700 ~/.local/share/sovereign/askpass.sh
 

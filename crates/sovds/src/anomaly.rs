@@ -1,3 +1,5 @@
+// Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Unsupervised anomaly scoring over a record stream — find what the rules missed.
 //!
 //! The rules classify *known* faults; a healthy-looking record (`class = healthy`)

@@ -1,0 +1,77 @@
+#!/bin/sh
+# Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# dns-selfheal — closes the gap podkop-selfheal doesn't cover: sing-box's
+# internal DNS resolver can hang (leaked sockets, empty results) while the
+# tunnel itself still reports a healthy proxy delay — because the clash-API
+# delay probe and LAN DNS resolution go through different code paths inside
+# sing-box. Observed 2026-08-08: sing-box up, tunnel routing fine per its own
+# metrics, but EVERY LAN DNS query returned "No answer" for an extended period
+# (self-reported ~a week) with zero detection, because nothing checked actual
+# resolution. This script does exactly that, cheaply and often.
+#
+# the internal engineering charter discipline (mirrors podkop-selfheal):
+#   * Bounded: fixed test domain, background+kill timeout guard (no `timeout`
+#     applet on this busybox), rate-limited restarts via a state file.
+#   * Graceful: a working resolver is left untouched; failure only ever
+#     restarts sing-box (cheap, reversible), never touches podkop's server
+#     list or config — that escalation stays podkop-selfheal's job.
+#   * No silent failures: every branch logs to syslog with context.
+#
+# Usage: dns-selfheal          (normal: rate-limited)
+#        dns-selfheal force    (skip rate limit; for testing)
+
+set -u
+
+TAG=dns-selfheal
+STATE=/tmp/dns-selfheal.state
+OUT=/tmp/dns-selfheal.out
+TESTDOMAIN=cp.cloudflare.com
+TIMEOUT=4
+MIN_INTERVAL=300      # at most one restart per 5 min
+
+MODE="${1:-run}"
+log() { logger -t "$TAG" "$1"; }
+
+# Resolve $TESTDOMAIN via the LAN resolver (127.0.0.1 = dnsmasq), with a hard
+# timeout since busybox here has no `timeout` applet.
+resolves() {
+    : > "$OUT"
+    nslookup "$TESTDOMAIN" 127.0.0.1 > "$OUT" 2>&1 &
+    pid=$!
+    ( sleep "$TIMEOUT"; kill -9 "$pid" 2>/dev/null ) &
+    watcher=$!
+    wait "$pid" 2>/dev/null
+    kill "$watcher" 2>/dev/null
+    wait "$watcher" 2>/dev/null
+    case "$(cat "$OUT" 2>/dev/null)" in
+        *"can't find"*|*"Can't find"*|*"No answer"*|*"connection timed out"*|"") return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+resolves && exit 0
+
+# --- resolution failed: rate-limit before acting -----------------------------
+now=$(date +%s)
+last=$(cat "$STATE" 2>/dev/null || echo 0)
+if [ "$MODE" = run ] && [ $((now - last)) -lt "$MIN_INTERVAL" ]; then
+    exit 0
+fi
+echo "$now" > "$STATE"
+
+log "LAN DNS resolution failing ($TESTDOMAIN via 127.0.0.1); restarting sing-box"
+/etc/init.d/sing-box restart >/dev/null 2>&1
+
+# --- bounded verification -----------------------------------------------------
+i=0
+while [ "$i" -lt 6 ]; do
+    sleep 5
+    if resolves; then
+        log "RECOVERED after sing-box restart"
+        exit 0
+    fi
+    i=$((i + 1))
+done
+log "sing-box restarted but DNS still failing after 30s; will retry after ${MIN_INTERVAL}s (podkop-selfheal may also intervene)"
+exit 1

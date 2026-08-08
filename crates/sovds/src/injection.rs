@@ -1,3 +1,5 @@
+// Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Metrics over deliberately injected faults — the payoff of ground-truth
 //! labelling, generic over the caller's [`Domain`].
 //!

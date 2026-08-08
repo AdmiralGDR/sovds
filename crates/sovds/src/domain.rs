@@ -1,3 +1,5 @@
+// Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! The [`Domain`] trait — how a caller plugs their own system into the toolkit.
 //!
 //! `sovds` knows nothing about routers, services, or any specific system. To use

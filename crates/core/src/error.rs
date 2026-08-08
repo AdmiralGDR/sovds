@@ -1,3 +1,5 @@
+// Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Errors as values (the principle: no panic, no silent swallow).
 //!
 //! Every fallible boundary in the system returns one of these enums instead of

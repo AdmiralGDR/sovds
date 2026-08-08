@@ -1,3 +1,5 @@
+// Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! `sovereign-export` — flatten the collected dataset into a TSV feature table.
 //!
 //! The record log is self-describing but not rectangular. This turns it into a flat

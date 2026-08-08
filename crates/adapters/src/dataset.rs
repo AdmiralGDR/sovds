@@ -1,3 +1,5 @@
+// Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Dataset loading for the router domain — a thin specialisation of the generic
 //! [`sovds::dataset`] to [`RouterDomain`]. The loading logic lives in the toolkit;
 //! this just fixes the domain so callers keep saying `dataset::load(path, gens)`.

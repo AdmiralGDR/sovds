@@ -1,3 +1,5 @@
+// Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Streaming **temporal features** — give a per-record model the history it would
 //! otherwise be blind to, without breaking causality.
 //!
@@ -194,7 +196,10 @@ mod tests {
         let out = w.transform(&[480]);
         let dev = out.get(1).copied().unwrap_or(0);
         let rate = out.get(2).copied().unwrap_or(0);
-        assert!(dev > 200, "deviation {dev} should expose the jump above baseline");
+        assert!(
+            dev > 200,
+            "deviation {dev} should expose the jump above baseline"
+        );
         assert_eq!(rate, 360, "rate is 480 - previous 120");
     }
 
@@ -212,7 +217,10 @@ mod tests {
         // not against the -1.
         let after = w.transform(&[121]);
         let dev = after.get(1).copied().unwrap_or(0);
-        assert!(dev.abs() < 10, "baseline survived the gap (dev {dev} near 0)");
+        assert!(
+            dev.abs() < 10,
+            "baseline survived the gap (dev {dev} near 0)"
+        );
     }
 
     #[test]
@@ -230,6 +238,9 @@ mod tests {
     #[test]
     fn names_expand_three_per_channel() {
         let names = feature_names(&["lat", "up"]);
-        assert_eq!(names, vec!["lat", "lat_dev", "lat_rate", "up", "up_dev", "up_rate"]);
+        assert_eq!(
+            names,
+            vec!["lat", "lat_dev", "lat_rate", "up", "up_dev", "up_rate"]
+        );
     }
 }

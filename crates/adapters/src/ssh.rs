@@ -1,3 +1,5 @@
+// Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! SSH bridge: build the exact `ssh` invocation for running a command on the
 //! router, and execute it through a [`CommandRunner`].
 //!

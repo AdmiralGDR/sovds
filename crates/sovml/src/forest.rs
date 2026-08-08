@@ -1,3 +1,5 @@
+// Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! A **random forest** — an ensemble of decision trees that vote — the sovereign
 //! upgrade from a single tree.
 //!
@@ -114,7 +116,12 @@ impl RandomForest {
     #[must_use]
     pub fn serialize(&self) -> String {
         let mut out = String::new();
-        let _ = writeln!(out, "sovml-forest 1 {} {}", self.n_classes, self.trees.len());
+        let _ = writeln!(
+            out,
+            "sovml-forest 1 {} {}",
+            self.n_classes,
+            self.trees.len()
+        );
         for tree in &self.trees {
             out.push_str(&tree.serialize());
         }
@@ -196,7 +203,14 @@ pub fn train_forest(
                 boot_labels.push(l);
             }
         }
-        let tree = train_subspace(&boot_rows, &boot_labels, n_classes, cfg.tree, mtry, &mut rng);
+        let tree = train_subspace(
+            &boot_rows,
+            &boot_labels,
+            n_classes,
+            cfg.tree,
+            mtry,
+            &mut rng,
+        );
         trees.push(tree);
     }
 
@@ -290,7 +304,11 @@ mod tests {
         let (rows, labels) = two_feature_and();
         let a = train_forest(&rows, &labels, 2, cfg(16));
         let b = train_forest(&rows, &labels, 2, cfg(16));
-        assert_eq!(a.serialize(), b.serialize(), "a seed fixes the whole forest");
+        assert_eq!(
+            a.serialize(),
+            b.serialize(),
+            "a seed fixes the whole forest"
+        );
     }
 
     #[test]

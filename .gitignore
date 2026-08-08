@@ -1,1 +1,8 @@
 /target
+# secrets / credentials — never tracked
+*.env
+*password*
+*secret*
+*.pem
+*.key
+!crates/**/*.key.rs

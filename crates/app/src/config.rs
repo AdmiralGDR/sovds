@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Runtime configuration, assembled from the environment with safe defaults.
 //!
-//! Configuration is validated at this boundary (the principle): malformed or missing
+//! Configuration is validated at this boundary: malformed or missing
 //! values fall back to documented defaults rather than propagating garbage into
 //! the core. Nothing here is a global — the values are handed explicitly to the
 //! composition root.
@@ -36,7 +36,7 @@ pub struct AppConfig {
     /// How many rotated record logs to keep.
     pub log_generations: u32,
     /// Observe-only mode: run the brain and record, but never touch the router.
-    /// Safe by default (the principle: least privilege); actuation is opt-in.
+    /// Safe by default (least privilege); actuation is opt-in.
     pub dry_run: bool,
 }
 

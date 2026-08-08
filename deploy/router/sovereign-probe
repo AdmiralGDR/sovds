@@ -5,7 +5,7 @@
 #
 # The brain (laptop) is the system of record, but it can be off or asleep. This
 # probe samples the SHARED telemetry (sovereign-telemetry.sh — the single source,
-# also run verbatim by the laptop collector; the internal engineering charter the principle) once a minute via
+# also run verbatim by the laptop collector — no duplicated logic) once a minute via
 # cron, into a strictly bounded ring buffer in /tmp (tmpfs = RAM only; router flash
 # is never touched — the durable dataset lives on the laptop, which drains this
 # buffer via sovereign-backfill).

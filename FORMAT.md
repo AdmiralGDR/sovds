@@ -101,7 +101,7 @@ label: **detection** (`inject=` vs diagnosed `class=`) and **rollback safety**
 (did each injection window return to health). The label/detection/safety plumbing
 is class-generic — a new class needs no code change.
 
-Safety rules every injection obeys (the principle/III): a revert scheduled *before* the
+Safety rules every injection obeys: a revert scheduled *before* the
 break; a bounded hold (`FAULT_SECS`); injection only into a verified-healthy system
 (never stacked on a real fault); an operator kill-switch (`/etc/sovereign-noinject`);
 and — the backstop — the rollback-safety monitor flags any window that never

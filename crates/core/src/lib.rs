@@ -6,7 +6,7 @@
 //! logic with **zero dependencies**, **zero I/O**, and **zero allocation**. It
 //! cannot reach the network, the disk, or a clock — all of that is injected at
 //! the edges through the contracts in [`ports`]. It compiles `no_std`, so it is
-//! agnostic to where it runs (the principle: agnostic core).
+//! agnostic to where it runs (agnostic core).
 //!
 //! The single entry point is [`fsm::decide`]: a total, deterministic function
 //! from `(state, observation)` to `(next state, action, reason)`. It never

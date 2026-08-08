@@ -5,8 +5,8 @@
 //! Splits are `feature <= threshold` on integer values, chosen greedily to
 //! maximise class purity (Gini) at each node. All the split arithmetic is integer
 //! and fixed-point, so training is deterministic and bit-identical on any machine
-//! (the principle) — no floats, no NaN. Depth and leaf size are capped, so a tree is
-//! bounded (the principle). A trained tree is a flat arena of nodes; walking it to
+//! — no floats, no NaN. Depth and leaf size are capped, so a tree is
+//! bounded. A trained tree is a flat arena of nodes; walking it to
 //! [predict](DecisionTree::predict) needs nothing but the core (`no_std`).
 
 use crate::rng::Rng;
@@ -14,7 +14,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt::Write as _;
 
-/// Upper bound on the number of classes (bounded per-node state, the principle).
+/// Upper bound on the number of classes (bounded per-node state).
 pub const MAX_CLASSES: usize = 16;
 
 /// Fixed-point scale for the integer split score (keeps sub-unit precision without
@@ -39,7 +39,7 @@ enum Node {
 /// Tuning for training — the guards that keep the tree bounded and honest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TreeConfig {
-    /// Maximum tree depth (also bounds recursion — the principle).
+    /// Maximum tree depth (also bounds recursion).
     pub max_depth: u32,
     /// A node with fewer than twice this many samples will not be split, and no
     /// split leaving a child smaller than this is considered (avoids overfitting
@@ -143,7 +143,7 @@ impl DecisionTree {
     }
 
     /// Parse a tree back from [`DecisionTree::serialize`]. A boundary guard: any
-    /// malformed or inconsistent input yields `None`, never a panic (the principle).
+    /// malformed or inconsistent input yields `None`, never a panic.
     #[must_use]
     pub fn deserialize(text: &str) -> Option<DecisionTree> {
         let mut lines = text.lines();

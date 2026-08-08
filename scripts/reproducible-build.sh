@@ -1,5 +1,5 @@
 #!/bin/sh
-# Reproducible-build gate (the principle).
+# Reproducible-build gate.
 #
 # The build must be a pure function of the source: same commit -> byte-identical
 # bytes, for EVERY shipped binary, not just one. We remove the two remaining
@@ -9,7 +9,7 @@
 # and forbid dependency drift with --locked. Since the tree has zero third-party
 # crates, there is nothing else to vary.
 #
-# This is a zero-touch gate (the principle): it builds the workspace TWICE into two
+# This is a zero-touch gate: it builds the workspace TWICE into two
 # isolated target dirs and asserts the hashes match, exiting non-zero on any
 # mismatch. Isolated dirs mean it never disturbs the working `target/` dev cache.
 # Pass `--print` to also emit the canonical per-binary hashes.
@@ -58,7 +58,7 @@ if [ "$A" = "$B" ]; then
     if [ "${1:-}" = "--print" ]; then echo "$A"; fi
     exit 0
 else
-    echo "MISMATCH ✗ — the principle regression; the build is not a pure function of the source" >&2
+    echo "MISMATCH ✗ — reproducibility regression; the build is not a pure function of the source" >&2
     # Show which binaries differ.
     printf '%s\n' "$A" > "$D1/a.txt"
     printf '%s\n' "$B" > "$D2/b.txt"

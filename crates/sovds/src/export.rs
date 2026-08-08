@@ -14,7 +14,7 @@
 //! class, the ground-truth injection label) followed by the observation's raw
 //! numeric signals ([`Domain::signal_names`]). No feature engineering happens here
 //! — only raw values are exposed; deriving features is the model's job, not the
-//! toolkit's (the principle). The row writers are `no_std` (`core::fmt::Write`); the
+//! toolkit's. The row writers are `no_std` (`core::fmt::Write`); the
 //! `String`/`Vec` convenience sits behind the `std` feature.
 
 use crate::domain::Domain;

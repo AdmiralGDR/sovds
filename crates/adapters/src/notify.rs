@@ -3,7 +3,7 @@
 //! Notification adapter: turn a supervisor [`Reason`] into a human-legible push
 //! via ntfy, sent with `curl`.
 //!
-//! Notification is a courtesy, not a dependency (the principle: graceful
+//! Notification is a courtesy, not a dependency (graceful
 //! degradation). The [`Notifier`] impl still returns a `Result`, but the caller
 //! is expected to log and continue — a missed push must never disturb the core.
 

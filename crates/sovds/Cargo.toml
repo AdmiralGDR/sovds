@@ -10,14 +10,14 @@ keywords = ["dataset", "telemetry", "fault-injection", "observability", "no_std"
 categories = ["no-std", "development-tools", "science"]
 
 [features]
-# The library is a no_std, zero-dependency core by default (the principle: agnostic
+# The library is a no_std, zero-dependency core by default (agnostic
 # core). The `std` feature turns on the on-disk edges — loading a corpus, the
 # rotating recorder — for the offline tools that run on a real machine.
 default = ["std"]
 std = []
 
 [dependencies]
-# Intentionally empty and it must stay that way (the principle & I): a
+# Intentionally empty and it must stay that way: a
 # dataset toolkit that a third party embeds must not drag transitive dependencies
 # into their tree, and must compile offline from a pinned toolchain in ten years.
 

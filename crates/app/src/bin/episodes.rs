@@ -3,7 +3,7 @@
 //! `sovereign-episodes` — segment the collected records into fault episodes and
 //! report the dataset's training-readiness per class.
 //!
-//! Rows are not the unit that matters; independent fault episodes are (the principle).
+//! Rows are not the unit that matters; independent fault episodes are.
 //! This is the honest answer to "how ready is the dataset to train a model?": a
 //! healthy network yields few, so the rare classes converge in episodes very
 //! slowly, and this prints exactly how slowly. `--list` dumps every episode.

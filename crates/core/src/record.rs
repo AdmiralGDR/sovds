@@ -29,7 +29,7 @@ pub fn write_record<W: Write>(w: &mut W, r: &Record) -> core::fmt::Result {
 }
 
 /// Parse one serialized line back into a [`Record`] — a boundary guard: malformed
-/// input is rejected, never trusted (the principle).
+/// input is rejected, never trusted.
 ///
 /// # Errors
 /// Returns [`ParseError`] on a malformed, incomplete, or unknown-key line.

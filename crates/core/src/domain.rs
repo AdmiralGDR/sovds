@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The vocabulary of the sovereign core.
 //!
-//! Types here make invalid states unrepresentable (the principle): a subsystem is
+//! Types here make invalid states unrepresentable: a subsystem is
 //! exactly one of its enum variants, never a contradictory combination of
 //! booleans. There is no way to construct, say, a WAN that is simultaneously up
 //! and down — the compiler forbids it.
 
 /// Maximum number of tunnel exit nodes the core reasons about in one cycle.
 ///
-/// A fixed capacity keeps the core allocation-free (the principle: zero hot-path
+/// A fixed capacity keeps the core allocation-free (zero hot-path
 /// allocation) and gives every loop over nodes a statically provable bound
-/// (the principle: bounded execution).
+/// (bounded execution).
 pub const MAX_NODES: usize = 8;
 
 /// Monotonic logical time: one tick is one supervision cycle. Unified with the
@@ -26,7 +26,7 @@ pub struct LatencyMs(pub u32);
 /// Opaque identity of a tunnel node.
 ///
 /// The core reasons about nodes by id only; mapping an id to a provider-specific
-/// server name or URL is strictly an adapter concern (the principle).
+/// server name or URL is strictly an adapter concern.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NodeId(pub u8);
 
@@ -108,12 +108,12 @@ pub enum WanReach {
 /// Packet loss / jitter are deliberately absent: honest loss needs multiple
 /// probes per cycle (a real load multiplier), and jitter is derivable offline
 /// from the existing 1/min latency series — adding either now would be
-/// unjustified complexity (the principle / the principle).
+/// unjustified complexity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Aux {
     /// Real reachability through the WAN (see [`WanReach`]).
     pub wan_reach: WanReach,
-    /// Router 1-minute load average, times 100 (integer fixed-point, the principle).
+    /// Router 1-minute load average, times 100 (integer fixed-point).
     pub load_centi: Option<u32>,
     /// Router `MemAvailable`, in KiB.
     pub mem_free_kb: Option<u32>,
@@ -134,7 +134,7 @@ impl Aux {
 
 /// One immutable observation of the whole system.
 ///
-/// This value is the sole input to the decision core (the principle: state is passed
+/// This value is the sole input to the decision core (state is passed
 /// explicitly). It is `Copy` and heap-free: the node table is a fixed array
 /// whose unused slots are `None`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

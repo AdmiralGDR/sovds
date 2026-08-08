@@ -1,5 +1,5 @@
 # Pinned toolchain — the build is a pure function of the source, not of whatever
-# happens to be installed on a given machine (the principle: reproducible
+# happens to be installed on a given machine (reproducible
 # builds). Anyone who checks out this commit compiles with exactly this compiler.
 [toolchain]
 channel = "1.96.1"

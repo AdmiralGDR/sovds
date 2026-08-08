@@ -16,14 +16,14 @@ dataset pipeline for free.
 
 Built to this project's internal engineering principles:
 
-- **Zero dependencies, agnostic core (the principle & I).** No third-party crates. The
+- **Zero dependencies, agnostic core.** No third-party crates. The
   core compiles `no_std` (the on-disk parts sit behind the default `std` feature).
   Embed it without dragging a dependency tree into your project; compile it offline
   from a pinned toolchain in ten years.
-- **Invalid states unrepresentable (the principle).** A record separates provenance
+- **Invalid states unrepresentable.** A record separates provenance
   (`Source`), the *diagnosed* fault, and the *ground-truth injection label*, so
   "we broke it on purpose" can never be confused with a real fault.
-- **Bounded, no-panic (the principle).** `#![forbid(unsafe_code)]`; the lints deny
+- **Bounded, no-panic.** `#![forbid(unsafe_code)]`; the lints deny
   `unwrap`/`expect`/`panic`/indexing/arithmetic-overflow. Nothing panics or
   overflows on hostile input; a corrupt log line is counted and skipped, never
   fatal.

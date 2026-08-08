@@ -4,11 +4,11 @@
 //! without storing history.
 //!
 //! Everything here is **integer fixed-point** on purpose. Floating point is
-//! avoided so results are bit-identical on every machine (the principle) and free of
-//! NaN/inf edge cases (the principle), and every operation is a checked/saturating
+//! avoided so results are bit-identical on every machine and free of
+//! NaN/inf edge cases, and every operation is a checked/saturating
 //! method call — never a bare operator — so nothing can overflow or divide by
-//! zero (the principle: no undefined arithmetic). Each estimator uses O(1) memory and
-//! O(1) work per sample (the principle: bounded execution; the principle: data-oriented).
+//! zero (no undefined arithmetic). Each estimator uses O(1) memory and
+//! O(1) work per sample (bounded, data-oriented execution).
 
 /// Values are stored multiplied by this scale to keep sub-unit precision using
 /// only integers.
@@ -90,7 +90,7 @@ pub struct Cusum {
     /// wind-up at one extra threshold above the alarm line, so recovery drains the
     /// alarm within a couple of samples. It does not change *detection* — `sum`
     /// still crosses `threshold` on exactly the same sample — only how promptly the
-    /// alarm clears afterwards (the principle: bounded state).
+    /// alarm clears afterwards (bounded state).
     ceiling: i64,
 }
 

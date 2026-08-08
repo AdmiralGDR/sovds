@@ -11,20 +11,20 @@
 //!
 //! Serialisation writes into any [`core::fmt::Write`] sink, so it needs no
 //! allocation and stays `no_std`. Parsing is a boundary guard: hostile input is
-//! rejected as a value, never trusted (the principle).
+//! rejected as a value, never trusted.
 
 use crate::domain::{Accept, Domain, ParseError};
 use core::fmt::Write;
 
 /// Monotonic logical time: one tick is one observation cycle. The core never reads
-/// a real clock (the principle) — the caller injects it, which makes every record
+/// a real clock — the caller injects it, which makes every record
 /// reproducible in a test.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Tick(pub u64);
 
 impl Tick {
     /// Advance by `n` ticks, saturating instead of overflowing so logical time is
-    /// always well defined (the principle: no undefined arithmetic).
+    /// always well defined (no undefined arithmetic).
     #[must_use]
     pub const fn saturating_add(self, n: u64) -> Self {
         Self(self.0.saturating_add(n))
@@ -32,7 +32,7 @@ impl Tick {
 }
 
 /// Where a record came from. Analysis must distinguish observations made live from
-/// ones recovered later, and from deliberately synthetic ones (the principle: the data
+/// ones recovered later, and from deliberately synthetic ones (the data
 /// carries its own provenance).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Source {
@@ -83,7 +83,7 @@ pub struct Record<D: Domain> {
     pub source: Source,
     /// Ground-truth label when this cycle's fault was **deliberately injected** —
     /// the class we induced on purpose. `None` for organic operation. Comparing it
-    /// to `class` measures detection on real behaviour, not guesswork (the principle).
+    /// to `class` measures detection on real behaviour, not guesswork.
     pub label: Option<D::Fault>,
 }
 
@@ -108,7 +108,7 @@ pub fn write_record<D: Domain, W: Write>(w: &mut W, r: &Record<D>) -> core::fmt:
 
 /// Parse one serialized line back into a [`Record`], the exact inverse of
 /// [`write_record`] and a boundary guard: malformed input is rejected, never
-/// trusted (the principle). Order-tolerant — tokens may appear in any order, so records
+/// trusted. Order-tolerant — tokens may appear in any order, so records
 /// written by an older layout still parse.
 ///
 /// # Errors

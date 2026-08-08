@@ -9,8 +9,8 @@
 //! decorrelate the trees, so their majority vote generalises better than any one
 //! tree and is far steadier on noisy, imbalanced data — exactly the regime of rare
 //! injected-fault classes. All randomness comes from a seeded [`Rng`], so a forest
-//! is reproducible bit-for-bit (the principle); depth, tree count and vote
-//! arithmetic are all bounded (the principle).
+//! is reproducible bit-for-bit; depth, tree count and vote
+//! arithmetic are all bounded.
 //!
 //! A forest keeps the tree's virtues: inference is `no_std`, and because it
 //! serialises to the concatenation of its trees, it plugs straight into the same
@@ -26,7 +26,7 @@ use core::fmt::Write as _;
 /// `floor(sqrt(n_features))` features per split.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ForestConfig {
-    /// Number of trees in the ensemble (bounded — the principle).
+    /// Number of trees in the ensemble (bounded).
     pub n_trees: usize,
     /// Per-tree growth limits (depth, min leaf).
     pub tree: TreeConfig,
@@ -129,7 +129,7 @@ impl RandomForest {
     }
 
     /// Parse a forest back from [`Self::serialize`]. Any malformed or inconsistent
-    /// input yields `None`, never a panic (the principle).
+    /// input yields `None`, never a panic.
     #[must_use]
     pub fn deserialize(text: &str) -> Option<RandomForest> {
         let mut lines = text.lines();
@@ -218,7 +218,7 @@ pub fn train_forest(
 }
 
 /// Integer square root (floor) — the classification default for `mtry`, with no
-/// floats (the principle). Bounded and panic-free (the principle).
+/// floats. Bounded and panic-free.
 fn isqrt(n: usize) -> usize {
     if n < 2 {
         return n;

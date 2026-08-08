@@ -10,15 +10,15 @@
 //! that is replayed through the *same* [`decide_cycle`] the live loop uses, and
 //! scored against the class it is known to represent.
 //!
-//! This is a measurement, not a theory (the principle): [`evaluate`] reports, per
+//! This is a measurement, not a theory: [`evaluate`] reports, per
 //! scenario, how many fault-phase cycles the rules classified correctly, when the
 //! first remedy fired, and whether any action leaked into a healthy phase. It is
-//! also a compile-time guard (the principle): the accompanying tests fail the build if
+//! also a compile-time guard: the accompanying tests fail the build if
 //! the rules stop diagnosing a canonical fault.
 //!
 //! Everything here is pure, `no_std`, allocation-free, and deterministic —
 //! variation across frames is a fixed function of the frame index, never a clock
-//! or an RNG (the principle/V), so a scenario replays byte-identically anywhere.
+//! or an RNG, so a scenario replays byte-identically anywhere.
 
 use crate::domain::{
     Aux, Dns, LatencyMs, NodeHealth, NodeId, Proc, Telemetry, Tick, Tunnel, Wan, WanReach,
@@ -67,7 +67,7 @@ fn fault_offset(i: u32) -> u32 {
 }
 
 /// Deterministic small per-frame variation (0..=15) so replays carry realistic
-/// jitter without any clock or RNG (the principle).
+/// jitter without any clock or RNG.
 const fn jitter(i: u32) -> u32 {
     i.wrapping_mul(37) & 15
 }

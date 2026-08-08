@@ -8,16 +8,16 @@
 //! The one thing that must never happen is confusing such a sample with an organic
 //! fault. This tool writes a small marker the telemetry probes read, so every
 //! record taken during the window is stamped `inject=<class>` (ground truth) and
-//! is permanently distinguishable from a real fault (the principle).
+//! is permanently distinguishable from a real fault.
 //!
-//! Deliberately narrow (the principle & least privilege): it only writes and clears a
+//! Deliberately narrow (least privilege): it only writes and clears a
 //! bounded marker file — it does **not** itself disrupt any service. Arming the
 //! label and causing the disruption are kept separate on purpose: the operator
 //! induces the actual fault by hand during the window (or runs a dry-run to prove
 //! the labelling loop with zero disruption). That keeps a data-labelling tool from
 //! doubling as a service-attack tool.
 //!
-//! Safety (the principle — bounded, self-healing):
+//! Safety (bounded, self-healing):
 //!   * the marker carries `until=<ts>`; probes stop labelling past it even if
 //!     cleanup never runs, so a label can never latch;
 //!   * a detached on-router timer (`setsid`) removes the marker after the window,

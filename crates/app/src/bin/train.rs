@@ -12,7 +12,7 @@
 //! With `--save <model>`, the advantage **accumulates**: each run trains a
 //! candidate, evaluates it and the currently-saved model on the same held-out
 //! split, and keeps whichever scores higher (macro-F1 — the imbalance-honest
-//! metric, the principle). Run it daily (cron) and the saved model only ever improves as
+//! metric). Run it daily (cron) and the saved model only ever improves as
 //! the dataset grows; `--history <log>` records the trajectory so "better every
 //! day" is a fact you can read.
 //!
@@ -164,7 +164,7 @@ fn main() -> ExitCode {
     // different feature recipe would score meaningless garbage on this run's test
     // set (its feature indices point elsewhere). We stamp the schema in a sidecar
     // and only compare within a matching schema; a changed recipe re-baselines the
-    // lineage honestly (the principle: no invalid comparison masquerading as progress).
+    // lineage honestly (no invalid comparison masquerading as progress).
     if let Some(save_path) = &save {
         let tag = schema_tag(base_features, feat_names.len());
         let meta_path = schema_sidecar(save_path);

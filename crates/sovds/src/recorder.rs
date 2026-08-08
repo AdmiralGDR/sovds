@@ -4,15 +4,15 @@
 //! `std` feature).
 //!
 //! Two disciplines shape it (the internal engineering charter):
-//! * **Atomicity, no partial writes (the principle):** a record is serialized in full,
+//! * **Atomicity, no partial writes:** a record is serialized in full,
 //!   then written with a single `write_all` to an `O_APPEND` file. A whole line
 //!   lands or nothing does — a crash mid-run can never leave a half-record.
-//! * **Bounded (the principle):** the file is capped and rotated across a fixed number
+//! * **Bounded:** the file is capped and rotated across a fixed number
 //!   of generations, so the trail can grow forever in time without ever growing
 //!   without bound on disk.
 //!
 //! Recording is a courtesy to the future, not a load-bearing dependency: failures
-//! are returned as values for the caller to log and shrug off (the principle).
+//! are returned as values for the caller to log and shrug off.
 
 use crate::domain::Domain;
 use crate::record::{write_record, Record};

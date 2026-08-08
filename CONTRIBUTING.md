@@ -1,8 +1,7 @@
 # Contributing
 
-This repo is built to this project's internal engineering principles (the the principles
-of Sovereign Engineering). The rules below are not style preferences — they are
-the the principles made mechanical.
+This repo is built to this project's internal engineering principles. The rules
+below are not style preferences — they are those principles made mechanical.
 
 ## The gates (all enforced by CI — a commit that fails one is not working code)
 
@@ -45,10 +44,10 @@ for free.
 
 ## Discipline
 
-- **Metrics before theories (the principle):** don't tune a constant or change a
+- **Metrics before theories:** don't tune a constant or change a
   decision rule without measuring it on real data first (`sovereign-replay`,
   `sovereign-scenario`). Record what the evidence showed in the commit.
-- **Bounded, honest (the principle/III):** every loop terminates, every external call
+- **Bounded, honest:** every loop terminates, every external call
   has a timeout, and the data never lies — provenance (`src=`), the diagnosed
   fault, and the injection label (`inject=`) are kept distinct so "we broke it on
   purpose" is never confused with a real fault.

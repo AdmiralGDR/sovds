@@ -6,7 +6,7 @@
 //! baseline of its raw signals and surfaces the ones that look statistically
 //! unusual — especially records the rules called healthy (`class=none`) yet that
 //! sit far from normal: candidates for a novel fault or a rule gap, for human
-//! review (it never actuates — the principle).
+//! review (it never actuates).
 //!
 //! Usage: `sovereign-anomaly [log] [--top N]`.
 

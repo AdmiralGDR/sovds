@@ -38,11 +38,11 @@ loginctl enable-linger "$USER"   # keep collecting across logout/reboot
 
 - **Observe-only by default.** The unit does **not** set `SOVEREIGN_ACTUATE`, so
   the brain uses the `NullActuator` and cannot touch the router (safety by
-  construction, the principle). Actuation is a separate, deliberate decision — enable it
+  construction). Actuation is a separate, deliberate decision — enable it
   only once accumulated data has validated the decision rules.
 - **Bounded on disk.** The log rotates at `SOVEREIGN_LOG_MAX_BYTES` across
   `SOVEREIGN_LOG_GENERATIONS` files (~200 MB total here), so the trail grows in
-  time without growing without bound (the principle + longevity).
+  time without growing without bound (plus longevity).
 - **Graceful when off-network.** If the laptop leaves the router's LAN, cycles
   record `probed=0` and the service keeps running; collection resumes on return.
 
@@ -61,7 +61,7 @@ motivated this). Two halves:
 - **`deploy/router/telemetry.sh`** — the **single source** of the telemetry
   contract (what is gathered, how each token is named). The laptop collector embeds
   it at compile time (`include_str!`) and the probe below sources it, so the two can
-  never diverge (the principle). Deploy to `/usr/bin/sovereign-telemetry.sh`.
+  never diverge. Deploy to `/usr/bin/sovereign-telemetry.sh`.
 - **`deploy/router/sovereign-probe`** — busybox script on the router (cron,
   1/min): runs `sovereign-telemetry.sh` and folds its output into
   `/tmp/sovereign-buffer.log` (tmpfs = RAM only, ring-bounded ≈ 14 days; router

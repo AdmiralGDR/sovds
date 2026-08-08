@@ -10,13 +10,13 @@ keywords = ["machine-learning", "decision-tree", "no_std", "interpretable", "sov
 categories = ["no-std", "science", "algorithms"]
 
 [features]
-# no_std, zero-dependency by default (the principle). Inference needs nothing but the
+# no_std, zero-dependency by default. Inference needs nothing but the
 # core; `std` turns on training (which uses Vec/sort) and the readable tree dump.
 default = ["std"]
 std = []
 
 [dependencies]
-# Intentionally empty and it must stay that way (the principle & I): a
+# Intentionally empty and it must stay that way: a
 # from-scratch model with no ML framework underneath — no ndarray, no linfa, no
 # torch. The math is ours, integer, and reproducible.
 

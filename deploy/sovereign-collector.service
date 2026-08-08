@@ -1,10 +1,10 @@
 [Unit]
 Description=Sovereign router-brain data collector (observe-only)
-Documentation=file://~/sovereign/README.md
+Documentation=file://%h/sovereign/README.md
 
 [Service]
 Type=simple
-ExecStart=~/.local/bin/sovereign
+ExecStart=%h/.local/bin/sovereign
 Restart=on-failure
 RestartSec=10
 
@@ -13,11 +13,11 @@ RestartSec=10
 # LAPTOP, never the router.
 Environment=SOVEREIGN_HOST=192.168.1.1
 Environment=SOVEREIGN_USER=root
-Environment=SOVEREIGN_ASKPASS=~/.local/share/sovereign/askpass.sh
+Environment=SOVEREIGN_ASKPASS=%h/.local/share/sovereign/askpass.sh
 Environment=SOVEREIGN_SSH_CONNECT_S=8
 Environment=SOVEREIGN_TELEMETRY_S=15
 Environment=SOVEREIGN_INTERVAL_S=60
-Environment=SOVEREIGN_LOG=~/.local/share/sovereign/records.log
+Environment=SOVEREIGN_LOG=%h/.local/share/sovereign/records.log
 Environment=SOVEREIGN_LOG_MAX_BYTES=20000000
 Environment=SOVEREIGN_LOG_GENERATIONS=10
 
@@ -26,7 +26,7 @@ Environment=SOVEREIGN_LOG_GENERATIONS=10
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=~/.local/share/sovereign
+ReadWritePaths=%h/.local/share/sovereign
 PrivateTmp=true
 ProtectControlGroups=true
 ProtectKernelTunables=true

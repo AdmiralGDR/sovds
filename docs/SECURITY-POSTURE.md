@@ -60,7 +60,7 @@ Finances) — там решения принимаются отдельно, в 
 
 the IP-Shield addendum не заменяет the internal engineering charter этого проекта — он добавляет юридический
 и криптографический слой поверх инженерных принцип. Раздел VI the internal engineering charter
-роутера (`~/router/the internal engineering charter`, "Автономия ИИ-агентов") уже
+роутера (личный, вне этого репозитория, раздел "Автономия ИИ-агентов") уже
 фиксирует применимую часть the IP-Shield addendum (self-tooling, проактивность,
 структурная память); этот файл — техническая реализация раздела I
 the IP-Shield addendum (IP Shield) специфично для sovereign/sovds.

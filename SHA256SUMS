@@ -1,7 +1,7 @@
-# SHA256SUMS — Sovereign Brain release manifest
-# Generated 2026-08-08T17:45:02Z from commit 1bc63a9a48b5de136b11fce5d866a59b964cec40
+# SHA256SUMS — release manifest
+# Generated 2026-08-08T18:14:34Z from commit f6e2da996071d8f3e1c52a6be51cf49cf894db7a
 # Binaries: cargo build --release --locked (reproducible-build.sh verified byte-identical)
-67566144fbb7dcb180578661362c7904a05d2e720f164bb36e07cfbfda32d9f9  sovereign
+4f5867f6ae4e4918f2cf7e84eee1fe46c82cc141d8314ae9b2605a889b1e7e60  sovereign
 15df8be5ec36059924e019ba5ea71f275c9e3148af5a67b659308bb584e8745a  sovereign-inspect
 ddad5b97353b8aa06097c4676217b9ac4a788b2be2d97219fd30694ed4d9d364  sovereign-replay
 1a5f1d522fca717afae70fb7a0225b8797e7ee135e056458ea2458bcfda756d8  sovereign-backfill
@@ -11,8 +11,8 @@ cbbf03c52a334affe4455ce3b68e243f639959441339e51dbba8de442aa17e0d  sovereign-scen
 5cd5ae51ffe467544cb193332e190e9a14d9dd14a7da47353b7a645103a8a137  sovereign-export
 76dc3762412852573bf72900f981ce1f881fadd5d6e41ab05f52443f8622a40c  sovereign-anomaly
 e51a65b7244a0f4168aaf7864f67ba6d760082ac0407fbef29bd01303e1c270b  sovereign-train
-# Router scripts (deploy/router/, deployed to /usr/bin on 192.168.1.1 via SSH)
-0987d4d2e6fd7311d95e0b173220078cf312c9143b40cd86f21a5d869fb1b7e4  dns-selfheal
-e7e121cea5afb3c9fbc502d02d945a34ac9bd64647a0a830a2b89d9b2f20f1e1  podkop-selfheal
-7dce6154db3c554a1ab164661b918954ac2d136cd20897619095d7135e66230c  sovereign-probe
-53a583516c397f491973807726243154d5097ac123bea9b42e6110501c6545fa  telemetry.sh
+# Router scripts (deploy/router/, deployed to /usr/bin on the router via SSH)
+2751b6dd941aa8fd2bc920e5874e1eb9c640b11db9b6e95d1048a3508cdc2ef0  dns-selfheal
+d7db58e865d93d221da420a3cc1e7f91ef2784c3787504dfe84f809d2ab38fe9  podkop-selfheal
+da20d80f9f677762ac2199a576f7743094ecd39badd13f501929b10904705335  sovereign-probe
+81f4133e4cfa0d8ba5915e36d44ce7edb54c82eeef159a61a80a40aad9f21b34  telemetry.sh

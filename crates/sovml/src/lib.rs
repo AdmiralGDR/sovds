@@ -4,7 +4,7 @@
 //!
 //! From-scratch, **zero-dependency**, integer machine learning. No ML framework
 //! underneath — no `ndarray`, no `linfa`, no `torch`; the math is ours, integer,
-//! and reproducible (the internal engineering charter, the principle & I & V).
+//! and reproducible (the principle & I & V).
 //!
 //! The first model is a **decision tree** ([`tree`]): the sovereign choice because
 //! it is *interpretable* (it prints as a set of rules — kin to a hand-written rule
@@ -17,7 +17,7 @@
 //! The second model is a **random forest** ([`forest`]): an ensemble of trees, each
 //! grown on a bootstrap resample and a random feature subspace, that predicts by
 //! majority vote. It keeps the tree's integer, bounded, reproducible nature (all
-//! randomness comes from a seeded [`rng`], the internal charter the principle) while generalising far
+//! randomness comes from a seeded [`rng`], the principle) while generalising far
 //! better on noisy, imbalanced data. A [`model::Model`] wraps either kind behind one
 //! type so a training loop can save, reload and compare "the best model so far"
 //! without knowing which it is — the seam that makes the advantage *cumulative*.

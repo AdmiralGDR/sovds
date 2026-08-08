@@ -6,7 +6,7 @@
 //! It is **splitmix64**: a tiny, well-studied generator whose whole state is one
 //! `u64`. There is no system entropy and no float anywhere — the same seed yields
 //! the same stream on every machine, so a model trained with it is reproducible
-//! bit-for-bit (the internal charter the principle). All arithmetic is wrapping or checked, so it can
+//! bit-for-bit (the principle). All arithmetic is wrapping or checked, so it can
 //! never panic or overflow-trap (the principle).
 
 /// A seedable splitmix64 generator. Clone it to fork an independent stream.

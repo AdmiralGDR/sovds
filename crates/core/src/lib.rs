@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Sovereign supervision core.
 //!
-//! This crate is the sovereign core described in `the internal engineering charter`: pure decision
+//! This crate is the sovereign core described in the internal engineering charter: pure decision
 //! logic with **zero dependencies**, **zero I/O**, and **zero allocation**. It
 //! cannot reach the network, the disk, or a clock — all of that is injected at
 //! the edges through the contracts in [`ports`]. It compiles `no_std`, so it is

@@ -2,7 +2,7 @@
 resolver = "2"
 members = ["crates/sovml", "crates/sovds", "crates/core", "crates/adapters", "crates/app"]
 
-# Quality gates as code (the internal engineering charter, the principle). These are not style preferences;
+# Quality gates as code (the principle). These are not style preferences;
 # they are the physical encoding of the principle (no panics, bounded execution).
 # Under `cargo clippy -- -D warnings` every one of these becomes a hard error, so
 # code that can panic, silently unwrap, index out of bounds, or overflow simply

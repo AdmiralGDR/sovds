@@ -17,7 +17,7 @@ default = ["std"]
 std = []
 
 [dependencies]
-# Intentionally empty and it must stay that way (the internal engineering charter, the principle & I): a
+# Intentionally empty and it must stay that way (the principle & I): a
 # dataset toolkit that a third party embeds must not drag transitive dependencies
 # into their tree, and must compile offline from a pinned toolchain in ten years.
 

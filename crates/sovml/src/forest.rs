@@ -9,7 +9,7 @@
 //! decorrelate the trees, so their majority vote generalises better than any one
 //! tree and is far steadier on noisy, imbalanced data — exactly the regime of rare
 //! injected-fault classes. All randomness comes from a seeded [`Rng`], so a forest
-//! is reproducible bit-for-bit (the internal charter the principle); depth, tree count and vote
+//! is reproducible bit-for-bit (the principle); depth, tree count and vote
 //! arithmetic are all bounded (the principle).
 //!
 //! A forest keeps the tree's virtues: inference is `no_std`, and because it

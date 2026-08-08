@@ -5,7 +5,7 @@
 # each token is named. Emits one `key=value` token per line to stdout, which the
 # brain's parser (`parse_snapshot`) validates.
 #
-# Used two ways from ONE definition (the internal engineering charter, the principle — no duplicated logic):
+# Used two ways from ONE definition (the principle — no duplicated logic):
 #   * the laptop collector runs this verbatim over SSH each cycle;
 #   * the router-side sovereign-probe sources it into the RAM fallback buffer.
 # A failed sub-probe emits its own token (tunnel=dead etc.) and never hangs — every

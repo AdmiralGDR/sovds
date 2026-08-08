@@ -1,7 +1,7 @@
 # The Sovereign Engineering family
 
-A catalogue of sibling projects built to the same *set of principles of Sovereign
-Engineering* (`the internal engineering charter`, the principles 0–V). They share a doctrine — zero-dependency
+A catalogue of sibling projects built to the same internal engineering
+charter (the principles 0–V). They share a doctrine — zero-dependency
 agnostic cores, hexagonal ports/adapters, make-invalid-states-unrepresentable,
 ACID/rollback, bounded no-panic execution, reproducible builds, zero-touch CI — but
 differ in domain and language. This document exists so the family stays coherent
@@ -29,7 +29,7 @@ The doctrine, expressed in each stack's idiom:
   port/adapter facade (`EncoderProvider`, "swap the engine in one line"), a
   hostile-input gate, ACID atomic-rename outputs, zero-alloc ISOBMFF parsing. It is
   the **structural template** this repo's workspace mirrors.
-- **`sovscale`** carries the **canonical text of the principles 0–V** in its `the internal engineering charter`.
+- **`sovscale`** carries the **canonical text of the principles 0–V** in its the internal engineering charter.
   Zig, not Rust, but the same zero-third-party-dependency law and never-crash-host
   discipline.
 - **AetheriumFramework** is philosophically parallel without ever naming the

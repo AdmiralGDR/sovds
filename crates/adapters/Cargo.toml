@@ -8,7 +8,7 @@ license = "AGPL-3.0-or-later"
 publish = false
 
 [dependencies]
-# Zero third-party dependencies (the internal engineering charter, the principle & I). The outside world is
+# Zero third-party dependencies (the principle & I). The outside world is
 # reached only through the OS itself (std + the `ssh`/`curl` binaries), never
 # through a crate that could rot or be compromised.
 sovereign-core = { path = "../core" }

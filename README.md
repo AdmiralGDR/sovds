@@ -1,5 +1,7 @@
 # Sovereign Router Brain
 
+🇬🇧 English | [🇷🇺 Русский](README.ru.md)
+
 This repository holds two things, cleanly separated:
 
 1. **[`sovds` — Sovereign Dataset Toolkit](crates/sovds/README.md)** — a
@@ -14,9 +16,12 @@ This repository holds two things, cleanly separated:
    reliable; the intelligence — health scoring, failure classification, and
    self-healing remediation — lives here, on a machine with real compute (the
    laptop today, a home server later). It reaches the router only through isolated
-   adapters over SSH/Tailscale.
+   adapters over SSH.
 
-Both are built strictly to `the internal engineering charter` (the principles of Sovereign Engineering).
+Both are built strictly to this project's internal engineering charter (the principles
+0–V, below) and, since 2026-08-08, to its IP-Shield hardening — see
+[`docs/SECURITY-POSTURE.md`](docs/SECURITY-POSTURE.md) for what was adopted,
+what was deliberately not, and why.
 
 ## Why off-router
 
@@ -32,28 +37,37 @@ poller today to an ML/LLM-assisted brain on a home server, without a rewrite.
             ┌─────────────────────────────────────────┐
             │              app (composition root)      │  ← wires everything, runs the loop
             │   ┌───────────────────────────────────┐  │
-   SSH  ───►│   │   adapters (I/O bridges)           │  │◄─── ntfy / Telegram
+   SSH  ───►│   │   adapters (I/O bridges)           │  │◄─── ntfy
   router    │   │   telemetry · actuator · notifier  │  │     notifications
             │   └──────────────┬────────────────────┘  │
             │                  │ implement                │
             │            ports (traits)  ← contracts      │
             │                  │ used by                   │
             │   ┌──────────────▼────────────────────┐    │
-            │   │   core  (pure · no_std · 0 deps)   │    │
-            │   │   domain · failure · fsm::decide   │    │
+            │   │  core (RouterDomain over sovds)    │    │
+            │   │  domain · failure · fsm::decide    │    │
+            │   └──────────────┬────────────────────┘    │
+            │                  │ implements sovds::Domain  │
+            │   ┌──────────────▼────────────────────┐    │
+            │   │  sovds (product — domain-agnostic) │    │
+            │   │  record · episode · injection ·    │    │
+            │   │  dataset · recorder · readiness    │    │
             │   └───────────────────────────────────┘    │
             └─────────────────────────────────────────────┘
 ```
 
-- **`crates/core`** — the sovereign core. `#![no_std]`, zero dependencies, zero
-  I/O, zero allocation. Its heart is `fsm::decide(state, telemetry, cfg, now)`:
-  a total, deterministic, panic-free function from an observation to an action.
-- **ports** (`core::ports`) — the traits the core needs from the world
-  (`TelemetrySource`, `Actuator`, `Notifier`). Contracts only.
-- **adapters** *(next milestone)* — implement the ports over SSH/ntfy. The only
-  code allowed to touch the network, the disk, or a clock.
-- **app** *(next milestone)* — the composition root: injects adapters into the
-  core and runs the bounded supervision loop.
+- **`crates/sovds`** — the reusable toolkit product. `#![no_std]` core, zero
+  dependencies, `std` feature for the on-disk parts. See its own README.
+- **`crates/core`** — the router's `sovds::Domain` implementation
+  (`RouterDomain`) plus the pure decision core: `fsm::decide(state, telemetry,
+  cfg, now)`, a total, deterministic, panic-free function from an observation to
+  an action.
+- **`crates/adapters`** — SSH telemetry + actuator, ntfy notifier, the router
+  fallback-buffer drain. The only code allowed to touch the network, the disk,
+  or a clock.
+- **`crates/app`** — the composition root and every CLI tool (below).
+- **`crates/sovml`** — a from-scratch, zero-dependency, integer decision tree
+  (interpretable, `no_std+alloc`) trained on the `sovds` corpus.
 
 ## The decision core, in one paragraph
 
@@ -64,92 +78,67 @@ Each cycle, telemetry is collapsed into the single most urgent `FailureClass`
 first: switch node → restart → bounce WAN → failover → reboot), and **cooldown
 with backoff** (never thrash). Recovery is honored immediately at any point.
 
-## How this maps to the set of principles
+## How this maps to the engineering charter
 
 | the principle | Where it lives in the code |
 |---|---|
-| 0 · Code is a liability | One crate, one job; `[dependencies]` is empty and must stay so. |
-| I · Agnostic core | `core` is `no_std`; all I/O is injected via `ports` traits. |
-| I · Dependency quarantine | Third-party code (later) only ever behind an adapter. |
-| II · Invalid states unrepresentable | Subsystems are enums, not bool soups; `State` is an ADT. |
+| 0 · Code is a liability | Every generic mechanism lives once in `sovds`; the router only supplies its domain. |
+| I · Agnostic core | `core`/`sovds` are `no_std`; all I/O is injected via `ports` traits. |
+| I · Dependency quarantine | Zero third-party crates anywhere in the workspace. |
+| II · Invalid states unrepresentable | Subsystems are enums, not bool soups; `State` is an ADT; `Source`/diagnosed-fault/injection-label can never be confused. |
 | II · Zero global state | `decide` takes state + config explicitly; no statics. |
 | II · ACID / rollback | `Actuator` returns `Ok` only after verifying the post-condition. |
 | III · Compile-time enforcement | `#![forbid(unsafe_code)]`; clippy denies unwrap/panic/index/overflow. |
 | III · Bounded execution | Fixed node array; finite escalation ladder; saturating math. |
-| III · Graceful degradation | `Unknown` readings never trigger action; notify failures are non-fatal. |
+| III · Graceful degradation | `Unknown` readings never trigger action; notify failures are non-fatal; integrity checks alert, never self-destruct. |
 | III · No panic | Errors are `Result` values; no `unwrap`/`expect`/`panic` anywhere. |
 | IV · Justified optimization | Rust now; a Zig on-router agent only when profiling demands it. |
-| V · Reproducible builds | `rust-toolchain.toml` pins the compiler; `Cargo.lock` pins the rest. |
+| V · Reproducible builds | `rust-toolchain.toml` + `Cargo.lock` pin everything; `scripts/reproducible-build.sh` self-verifies byte-identical binaries. |
 | V · Zero-touch gates | CI: `fmt --check` + `clippy -D warnings` + `test`, all blocking. |
+| IP Shield | AGPL-3.0-or-later, signed commits, `SHA256SUMS` + OpenTimestamps. See [security posture](docs/SECURITY-POSTURE.md). |
 
 ## Build & verify
 
 ```sh
-cargo fmt --all --check          # formatting is not negotiable
-cargo clippy --all-targets -- -D warnings   # warnings are errors
-cargo test --all                 # deterministic unit tests
-sh scripts/reproducible-build.sh # the principle: all 7 binaries byte-identical (self-checking gate)
+cargo fmt --all --check                      # formatting is not negotiable
+cargo clippy --all-targets --locked -- -D warnings   # warnings are errors
+cargo test --workspace --locked              # deterministic unit tests
+sh scripts/reproducible-build.sh --print     # the principle: all binaries byte-identical
+sh scripts/verify-integrity.sh               # installed binaries match SHA256SUMS
 ```
 
 ## Tools
 
+10 CLI binaries, all built by `cargo build --release --locked`:
+
+- `sovereign` — the live supervisor (observe-only unless `SOVEREIGN_ACTUATE` is set).
 - `sovereign-inspect [log]` — dataset metrics (class balance, latency distribution).
 - `sovereign-episodes [log] [--list]` — segment the log into **fault episodes**
-  (the real training/analysis unit) and report training-readiness per class:
-  independent incidents, not rows. `--list` flags which episodes were injected.
-  See [FORMAT.md](FORMAT.md).
-- `sovereign-inject <class> [--secs N]` — arm a **ground-truth injection label**: a
-  bounded, auto-expiring marker so records taken while a fault is deliberately
-  induced are stamped `inject=<class>` and stay distinguishable from real faults.
-  Writes only a marker (it does not disrupt any service itself — inducing the fault
-  is a separate, explicit step). `--status` / `--clear` manage it.
-- `sovereign-export [log] [out.tsv]` — flatten the dataset into a **TSV feature
-  table** (`t ts probed class inject <raw signals>`) any tool (pandas, DuckDB, a
-  training pipeline) can read. Raw signals only, no feature engineering (the principle).
-- `sovereign-anomaly [log] [--top N]` — **unsupervised** scan: score every record
-  against an online baseline of its signals and surface the ones the rules called
-  healthy (`class=none`) but that look statistically unusual — rule-gap candidates
-  for human review. Never actuates.
-- `sovereign-train [log] [--depth N]` — train an interpretable **decision tree**
-  (`sovml`) on the corpus and evaluate it against a held-out slice: overall
-  agreement with the rules, per-class recall, and the learned tree printed as
-  readable rules. The bridge from the `sovds` dataset to a `sovml` model.
-- `sovereign-replay` — replay the corpus under different adaptive configs (tuning
-  as measurement, not guesswork).
+  (the real training/analysis unit) and report training-readiness per class.
+- `sovereign-inject <class> [--secs N]` — arm a **ground-truth injection label**.
+- `sovereign-export [log] [out.tsv]` — flatten the dataset into a TSV feature table.
+- `sovereign-anomaly [log] [--top N]` — unsupervised scan for rule-gap candidates.
+- `sovereign-train [log] [--depth N]` — train an interpretable decision tree
+  (`sovml`) on the corpus, evaluate against a held-out slice.
+- `sovereign-replay` — replay the corpus under different adaptive configs.
 - `sovereign-backfill` — loss-free drain of the router's fallback buffer.
-- `sovereign-scenario` — replay the **canonical fault-scenario suite** through the
-  live decision pipeline and print a per-class accuracy matrix. This reaches the
-  parts of the decision space passive observation never will: `wan_down`,
-  `singbox_dead` and `dns_fail` have ~zero real samples, so this is the only way to
-  know the rules would diagnose them. It touches nothing on the router — the
-  episodes are deterministic laboratory telemetry. `--trace <name>` dumps a scenario
-  frame by frame; `--seed <path>` writes the frames as `src=synth` records to a
-  *separate* file (the observed dataset stays pure).
+- `sovereign-scenario` — replay the canonical fault-scenario suite through the
+  live decision pipeline; the only way to measure rare classes (`wan_down`,
+  `singbox_dead`, `dns_fail`) that passive collection sees too little of.
 
-Two findings the suite surfaced, both pinned as tests and left for separate,
-data-driven fixes (the principle — decisions change by evidence, not on a whim):
-
-1. **WAN blackhole is invisible.** A session that is up but blackholed (`wanok=0`)
-   scores 0% — `classify` does not yet read `wan_reach`. The aux signal exists; the
-   rule to act on it does not.
-2. **Adaptive recovery lag.** After a sustained slow-down raises a node's learned
-   baseline, the CUSUM throttle alarm latches: the supervisor keeps diagnosing
-   `node_degraded` and fires a remedy once *after* the path has fully recovered.
-   Warmup stays clean — this is lingering suspicion, not a cold-start false positive.
-
-## Language split (where Zig is rational)
-
-Rust owns the brain: its type system is what makes "invalid states won't
-compile" real. Zig's rational place is a future **on-router native agent** — a
-tiny static aarch64 binary that snapshots telemetry with zero allocation and
-cross-compiles without an external toolchain. Per the principle we do **not** build it
-until the shell-over-SSH telemetry adapter is proven insufficient; adding a second
-language now would be unjustified complexity.
+See [`FORMAT.md`](FORMAT.md) for the record layout and
+[`deploy/README.md`](deploy/README.md) ([Russian](deploy/README.ru.md)) for a
+from-scratch install.
 
 ## Status
 
-- [x] Sovereign core: domain, failure classifier, supervisor FSM, ports, tests.
-- [ ] Adapters: SSH telemetry + actuator, ntfy notifier.
-- [ ] App: composition root + bounded loop.
+- [x] `sovds` — feature-complete, domain-agnostic, independently tested against
+      a third-party example domain (`host_monitor.rs`).
+- [x] `sovereign-core` (`RouterDomain`) — router migrated onto `sovds`, live in
+      production, 0 records skipped against the historical corpus.
+- [x] Adapters — SSH telemetry + actuator, ntfy notifier, router fallback drain.
+- [x] App — composition root, bounded loop, 10 CLI tools.
+- [x] `sovml` — zero-dependency decision tree, trained on the live corpus.
+- [x] IP Shield — AGPL relicense, signed commits, hash+timestamp anchoring.
 - [ ] Router access via Tailscale (removes the network-dependency for control).
 - [ ] (Later, if justified) Zig on-router telemetry agent.

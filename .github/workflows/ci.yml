@@ -1,6 +1,6 @@
 name: quality-gate
 
-# Zero-touch quality gates (the internal engineering charter, the principle). A commit that fails any of
+# Zero-touch quality gates (the principle). A commit that fails any of
 # these is, by definition, not working code — it cannot merge. Style is not up
 # for human debate; the pipeline decides.
 on:

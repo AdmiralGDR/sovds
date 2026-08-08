@@ -5,7 +5,7 @@
 //! fault class, including the ones a healthy network never produces.
 //!
 //! This is the "metrics before theories" instrument for the parts of the decision
-//! space the passive dataset cannot reach (the principle): `wan_down`, `singbox_dead`
+//! space the passive dataset cannot reach: `wan_down`, `singbox_dead`
 //! and `dns_fail` have ~zero real samples, so this is the only way to know whether
 //! the rules would even diagnose them. It touches nothing on the router — the
 //! episodes are deterministic laboratory telemetry ([`sovereign_core::scenario`]).

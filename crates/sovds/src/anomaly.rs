@@ -5,7 +5,7 @@
 //! The rules classify *known* faults; a healthy-looking record (`class = healthy`)
 //! that is nonetheless statistically far from normal is either a novel fault the
 //! rule vocabulary does not cover, or a benign oddity. This module surfaces those
-//! for human review — it never actuates (the principle: it is an analysis lens, not a
+//! for human review — it never actuates (it is an analysis lens, not a
 //! decision).
 //!
 //! It learns, online, a baseline for each of the observation's raw [signals]
@@ -14,7 +14,7 @@
 //! its measured signals, of how many spreads each value sits from its baseline
 //! (integer fixed-point, ×[`crate::stats::SCALE`], so a score of 1000 is "one
 //! typical deviation away"). Everything is integer and bounded — no floats, no
-//! panics, a fixed per-signal state (the principle/V).
+//! panics, a fixed per-signal state.
 //!
 //! [signals]: crate::domain::Domain::signals
 
@@ -22,7 +22,7 @@ use crate::domain::Domain;
 use crate::record::Record;
 use crate::stats::{Ewma, SCALE};
 
-/// Upper bound on the number of signals scored (bounded state, the principle). Signals
+/// Upper bound on the number of signals scored (bounded state). Signals
 /// a domain exposes beyond this are ignored.
 pub const MAX_SIGNALS: usize = 16;
 

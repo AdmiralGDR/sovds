@@ -21,8 +21,7 @@
 //! Everything is integer and causal — each column depends only on the current and
 //! past samples, never the future — so the transform is safe to compute over a whole
 //! corpus and *then* split into train/test: the state that crosses the split is
-//! exactly the state an online consumer would already hold (the principle:
-//! deterministic; the principle: bounded — one EWMA and one previous value per channel).
+//! exactly the state an online consumer would already hold (deterministic, bounded — one EWMA and one previous value per channel).
 //!
 //! **Missing values.** A channel reports `-1` (any negative) for "not measured".
 //! Those samples do not update the baseline (they would poison it) and emit a

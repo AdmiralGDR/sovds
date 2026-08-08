@@ -5,7 +5,7 @@
 //!
 //! When a fault is induced on purpose, every record in the window carries an
 //! `inject=<class>` label ([`Record::label`]). Two questions matter, and both are
-//! measured **per injection window**, not per record (the principle: measure the right
+//! measured **per injection window**, not per record (measure the right
 //! thing — a window spans transition edges and possibly a dry-run marker where
 //! nothing broke, so per-record scoring is misleading):
 //!

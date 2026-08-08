@@ -8,7 +8,7 @@
 //! [`Model::deserialize`] sniffs the header line, so the on-disk format is
 //! self-describing and a third-party loop never has to know in advance what it
 //! trained. Inference is `no_std`; a malformed file yields `None`, never a panic
-//! (the principle).
+//!.
 
 use crate::forest::RandomForest;
 use crate::tree::DecisionTree;

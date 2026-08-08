@@ -3,7 +3,7 @@
 //! SSH bridge: build the exact `ssh` invocation for running a command on the
 //! router, and execute it through a [`CommandRunner`].
 //!
-//! The OpenSSH client is quarantined behind [`SshConfig`] (the principle): the rest of
+//! The OpenSSH client is quarantined behind [`SshConfig`]: the rest of
 //! the system never sees a raw command line. Password auth is driven by an
 //! askpass helper whose path is passed in the environment, never on the argv, so
 //! the secret never appears in a process list.

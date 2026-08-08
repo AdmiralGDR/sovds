@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Training-readiness: roll fault episodes up per class into the numbers that
 //! gate "is there enough data yet?" — measured in **independent episodes per
-//! class**, not rows (the principle: a healthy system fails rarely, so the rare classes
+//! class**, not rows (a healthy system fails rarely, so the rare classes
 //! converge in episodes agonisingly slowly; this says how slowly).
 //!
 //! Offline analysis, so it links `std` (behind the crate's `std` feature) and uses

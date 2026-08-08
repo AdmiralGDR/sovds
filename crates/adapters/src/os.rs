@@ -1,13 +1,13 @@
 // Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! The OS bridge (the principle): the single, quarantined gateway through which the
+//! The OS bridge: the single, quarantined gateway through which the
 //! system runs external programs.
 //!
 //! Everything the brain does to the outside world — reach the router over `ssh`,
 //! publish a notification with `curl` — is expressed here as an argv plus an
 //! optional environment, optional stdin, and a **hard timeout**. Because the
 //! timeout is mandatory and enforced by killing the child, no call can ever block
-//! forever (the principle: bounded execution). Raw bytes returned here are untrusted
+//! forever (bounded execution). Raw bytes returned here are untrusted
 //! until a parser validates them.
 
 use std::io::{Read, Write};
@@ -38,7 +38,7 @@ impl CommandOutput {
 }
 
 /// Why an external command could not be run to completion. Errors are values
-/// (the principle): no path here unwinds the stack.
+///: no path here unwinds the stack.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum RunError {
@@ -46,14 +46,14 @@ pub enum RunError {
     EmptyArgv,
     /// The program could not be spawned (missing binary, permission denied).
     Spawn,
-    /// The command exceeded its deadline and was killed (the principle).
+    /// The command exceeded its deadline and was killed.
     Timeout,
     /// An I/O error occurred while talking to the child.
     Io,
 }
 
 /// The contract every command execution goes through. Kept as a trait so the
-/// real OS can be swapped for a fake in tests (the principle: injected I/O).
+/// real OS can be swapped for a fake in tests (injected I/O).
 pub trait CommandRunner {
     /// Run `argv` (with `env` overrides and optional `stdin`) to completion or
     /// until `timeout` elapses, whichever comes first.
@@ -144,7 +144,7 @@ impl CommandRunner for SystemRunner {
 }
 
 /// Read a pipe to EOF, returning whatever bytes arrived. An I/O error yields the
-/// bytes read so far rather than failing the whole command (the principle).
+/// bytes read so far rather than failing the whole command.
 fn drain(pipe: Option<impl Read>) -> Vec<u8> {
     let mut buffer = Vec::new();
     if let Some(mut source) = pipe {

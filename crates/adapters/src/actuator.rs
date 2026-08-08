@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Actuator adapter: apply a remediation on the router and verify it took hold.
 //!
-//! Every method here honours the ACID contract of [`Actuator`] (the principle): it
+//! Every method here honours the ACID contract of [`Actuator`]: it
 //! returns `Ok(())` only after re-observing the router and confirming the
 //! post-condition. Any doubt becomes [`ActError::Unverified`], so the supervisor
 //! treats the change as not applied and will re-evaluate next cycle. The Clash
@@ -114,7 +114,7 @@ impl<R: CommandRunner> Actuator for SshActuator<'_, R> {
 /// This is observe-only (dry-run) operation: the decision core runs exactly as it
 /// would live and its intended actions are recorded, but no command is ever
 /// issued. Safety is guaranteed by construction, not by a flag — this type holds
-/// no transport, so it *cannot* act (the principle: least privilege). Each call reports
+/// no transport, so it *cannot* act (least privilege). Each call reports
 /// [`Actuation::Simulated`] so the state machine advances as if the remedy had
 /// worked, while the trail records the outcome honestly as simulated — a faithful
 /// "what the brain would have done, but did not" record, never a false "verified".

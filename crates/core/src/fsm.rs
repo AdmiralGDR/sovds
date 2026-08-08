@@ -9,7 +9,7 @@
 //! * **Hysteresis** — never react to a single blip; a fault must be confirmed
 //!   `confirm_threshold` cycles running before any disruptive action.
 //! * **Escalation** — always try the least-disruptive remedy first and climb a
-//!   fixed, finite ladder only if the fault persists (the principle: bounded
+//!   fixed, finite ladder only if the fault persists (bounded
 //!   execution — the ladder terminates, so escalation cannot run away).
 //! * **Cooldown + backoff** — after acting, wait before re-evaluating, and widen
 //!   the wait as the level rises, so the supervisor can never thrash.
@@ -39,7 +39,7 @@ pub enum Action {
 }
 
 /// Tunable thresholds. Passed explicitly on every call — the core holds no
-/// configuration of its own (the principle: zero global state).
+/// configuration of its own (zero global state).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Config {
     /// Latency above which a `Healthy` tunnel is reclassified as degraded.
@@ -51,7 +51,7 @@ pub struct Config {
 }
 
 /// The supervisor's memory between cycles. Every reachable value is valid by
-/// construction (the principle: make invalid states unrepresentable).
+/// construction (make invalid states unrepresentable).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
     /// Everything nominal.
@@ -67,7 +67,7 @@ pub enum State {
 }
 
 /// Why a transition happened — a machine-readable, allocation-free explanation
-/// suitable for logging with full context (the principle: errors and decisions are
+/// suitable for logging with full context (errors and decisions are
 /// never silent). Adapters render it into human text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reason {
@@ -115,7 +115,7 @@ const fn ladder(class: FailureClass) -> &'static [Action] {
 
 /// The action for a fault at a given escalation level. Levels past the end of the
 /// ladder saturate at its terminal action, so an unexpected level can never index
-/// out of bounds (the principle) nor invent an action.
+/// out of bounds nor invent an action.
 fn action_at(class: FailureClass, level: u8) -> Action {
     let steps = ladder(class);
     let last = steps.len().saturating_sub(1);

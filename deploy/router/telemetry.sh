@@ -5,11 +5,11 @@
 # each token is named. Emits one `key=value` token per line to stdout, which the
 # brain's parser (`parse_snapshot`) validates.
 #
-# Used two ways from ONE definition (the principle — no duplicated logic):
+# Used two ways from ONE definition (no duplicated logic):
 #   * the laptop collector runs this verbatim over SSH each cycle;
 #   * the router-side sovereign-probe sources it into the RAM fallback buffer.
 # A failed sub-probe emits its own token (tunnel=dead etc.) and never hangs — every
-# network call has a hard timeout (the principle: bounded, graceful degradation).
+# network call has a hard timeout (bounded, graceful degradation).
 S=$(uci -q get podkop.settings.yacd_secret_key)
 if ubus call network.interface.wan status 2>/dev/null | grep -q '"up": true'; then
   U=$(ubus call network.interface.wan status 2>/dev/null | sed -n 's/.*"uptime": \([0-9]*\).*/\1/p' | head -1)

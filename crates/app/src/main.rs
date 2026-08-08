@@ -4,7 +4,7 @@
 //!
 //! The one place where concrete adapters are injected into the pure core and the
 //! bounded loop is started. All I/O types are constructed here and nowhere else
-//! (the principle: I/O lives only at the outermost layer).
+//! (I/O lives only at the outermost layer).
 
 mod config;
 mod supervisor;
@@ -36,7 +36,7 @@ fn main() -> ExitCode {
     let notifier = NtfyNotifier::new(&runner, cfg.ntfy_topic.clone(), cfg.ntfy_timeout);
 
     // Durable audit/training trail. Recording failures are logged and shrugged
-    // off — the trail is a courtesy to the future, never load-bearing (the principle).
+    // off — the trail is a courtesy to the future, never load-bearing.
     let recorder = FileRecorder::new(cfg.log_path.clone(), cfg.log_max_bytes, cfg.log_generations);
 
     let mode = if cfg.dry_run {
@@ -114,7 +114,7 @@ fn unix_now() -> u64 {
 }
 
 /// Apply command-line overrides on top of the environment-derived config.
-/// Unknown flags are ignored (forgiving boundary, the principle).
+/// Unknown flags are ignored (forgiving boundary).
 fn apply_args<I: Iterator<Item = String>>(cfg: &mut AppConfig, mut args: I) {
     while let Some(arg) = args.next() {
         match arg.as_str() {

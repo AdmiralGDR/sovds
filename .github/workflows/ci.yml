@@ -1,6 +1,6 @@
 name: quality-gate
 
-# Zero-touch quality gates (the principle). A commit that fails any of
+# Zero-touch quality gates. A commit that fails any of
 # these is, by definition, not working code — it cannot merge. Style is not up
 # for human debate; the pipeline decides.
 on:
@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # The toolchain is pinned by rust-toolchain.toml, so every runner compiles
-      # with the exact same compiler (the principle: reproducible builds).
+      # with the exact same compiler (reproducible builds).
       - name: Formatting is not negotiable
         run: cargo fmt --all --check
 
@@ -25,12 +25,12 @@ jobs:
         run: cargo test --all --locked
 
       # The toolkit's independence is a guarantee, not a hope: its core must build
-      # with zero std and zero dependencies (the principle & I). If a std leak ever sneaks
+      # with zero std and zero dependencies. If a std leak ever sneaks
       # in, this fails.
       - name: The sovds core stays no_std
         run: cargo build -p sovds --no-default-features --locked
 
-      # Reproducibility is an the principle (the principle): the same source must produce
+      # Reproducibility is an the principle: the same source must produce
       # byte-identical binaries. The gate self-verifies by building twice and
       # comparing every shipped binary's hash.
       - name: Builds are reproducible

@@ -18,13 +18,13 @@
 //! ## Design principles
 //!
 //! Built to this project's internal engineering principles:
-//! * **Zero dependencies, agnostic core (the principle & I).** This crate has no
+//! * **Zero dependencies, agnostic core.** This crate has no
 //!   third-party dependencies and compiles `no_std` by default; the on-disk edges
 //!   live behind the `std` feature. Embed it without dragging a dependency tree.
-//! * **Invalid states unrepresentable (the principle).** The record model separates
+//! * **Invalid states unrepresentable.** The record model separates
 //!   provenance ([`Source`]), the diagnosed fault, and the ground-truth injection
 //!   label so "we broke it on purpose" can never be confused with a real fault.
-//! * **Bounded, no-panic (the principle).** `#![forbid(unsafe_code)]`; the workspace
+//! * **Bounded, no-panic.** `#![forbid(unsafe_code)]`; the workspace
 //!   lints deny `unwrap`/`expect`/`panic`/indexing/arithmetic-overflow, so nothing
 //!   here can panic or overflow on hostile input.
 //!
@@ -42,7 +42,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
 // The public API of an embeddable, independent library must stay documented — make
-// it a compile-time gate, not a good intention (the principle: zero-touch quality gates).
+// it a compile-time gate, not a good intention (zero-touch quality gates).
 #![deny(missing_docs)]
 
 pub mod anomaly;

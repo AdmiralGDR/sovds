@@ -3,9 +3,9 @@
 //! Ports: the contracts the core requires of the outside world.
 //!
 //! Adapters (SSH, ntfy, files) implement these traits; the core depends only on
-//! the traits, never on their implementations (the principle: agnostic core, via
+//! the traits, never on their implementations (agnostic core, via
 //! dependency inversion). Because the outside world is presumed hostile
-//! (the principle), every method returns a `Result` — there is no infallible I/O.
+//!, every method returns a `Result` — there is no infallible I/O.
 //!
 //! These are contracts only. No adapter lives in this crate: keeping I/O out of
 //! the core is what lets the same decision logic run on a laptop today and on a
@@ -22,7 +22,7 @@ use crate::fsm::Reason;
 /// out-of-band ground truth — the fault class we deliberately induced this cycle
 /// (read from the router's injection marker), or `None` in organic operation. The
 /// core ignores `injected` for decisions; it rides through to the record so the
-/// dataset can tell "we broke it on purpose" from a real fault (the principle: the two
+/// dataset can tell "we broke it on purpose" from a real fault (the two
 /// are different states and must be representable as such).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Observation {
@@ -44,7 +44,7 @@ impl Observation {
 /// A source of system observations.
 ///
 /// Implementations must enforce a hard timeout internally so a hung transport can
-/// never stall the supervision loop (the principle: bounded execution). A returned
+/// never stall the supervision loop (bounded execution). A returned
 /// [`Telemetry`] must already have been validated at the boundary — the core
 /// trusts it completely.
 pub trait TelemetrySource {
@@ -55,7 +55,7 @@ pub trait TelemetrySource {
 
 /// Whether a remedy was actually carried out on the device, or only simulated.
 ///
-/// This distinction is load-bearing for the dataset's honesty (the principle: make the
+/// This distinction is load-bearing for the dataset's honesty (make the
 /// invalid state — "recorded as verified but never issued" — unrepresentable): an
 /// observe-only run decides real actions but must not claim to have applied them,
 /// or the trail teaches a future model a false action→outcome causality.
@@ -69,7 +69,7 @@ pub enum Actuation {
 
 /// The ability to apply a remediation and confirm it took effect.
 ///
-/// Actuation must be atomic and self-verifying (the principle: ACID). An
+/// Actuation must be atomic and self-verifying (ACID). An
 /// `Ok(Actuation::Applied)` means the post-condition was checked — not merely that
 /// a command was sent; an `Ok(Actuation::Simulated)` means observe-only, nothing
 /// was issued. On any doubt the implementation returns [`ActError::Unverified`] so
@@ -90,7 +90,7 @@ pub trait Actuator {
 /// A channel for human-legible notifications.
 ///
 /// Notification is a courtesy, not a dependency: a failure to notify must never
-/// escalate into a core failure (the principle: graceful degradation). Callers log
+/// escalate into a core failure (graceful degradation). Callers log
 /// the [`ActError`] and carry on.
 pub trait Notifier {
     /// Emit a human-facing note describing why the supervisor acted.

@@ -18,8 +18,8 @@ This repository holds two things, cleanly separated:
    laptop today, a home server later). It reaches the router only through isolated
    adapters over SSH.
 
-Both are built strictly to this project's internal engineering charter (the principles
-0–V, below) and, since 2026-08-08, to its IP-Shield hardening — see
+Both are built strictly to this project's internal engineering principles
+(below) and, since 2026-08-08, to its IP-Shield hardening — see
 [`docs/SECURITY-POSTURE.md`](docs/SECURITY-POSTURE.md) for what was adopted,
 what was deliberately not, and why.
 
@@ -78,23 +78,23 @@ Each cycle, telemetry is collapsed into the single most urgent `FailureClass`
 first: switch node → restart → bounce WAN → failover → reboot), and **cooldown
 with backoff** (never thrash). Recovery is honored immediately at any point.
 
-## How this maps to the engineering charter
+## How this maps to the engineering principles
 
-| the principle | Where it lives in the code |
+| Principle | Where it lives in the code |
 |---|---|
-| 0 · Code is a liability | Every generic mechanism lives once in `sovds`; the router only supplies its domain. |
-| I · Agnostic core | `core`/`sovds` are `no_std`; all I/O is injected via `ports` traits. |
-| I · Dependency quarantine | Zero third-party crates anywhere in the workspace. |
-| II · Invalid states unrepresentable | Subsystems are enums, not bool soups; `State` is an ADT; `Source`/diagnosed-fault/injection-label can never be confused. |
-| II · Zero global state | `decide` takes state + config explicitly; no statics. |
-| II · ACID / rollback | `Actuator` returns `Ok` only after verifying the post-condition. |
-| III · Compile-time enforcement | `#![forbid(unsafe_code)]`; clippy denies unwrap/panic/index/overflow. |
-| III · Bounded execution | Fixed node array; finite escalation ladder; saturating math. |
-| III · Graceful degradation | `Unknown` readings never trigger action; notify failures are non-fatal; integrity checks alert, never self-destruct. |
-| III · No panic | Errors are `Result` values; no `unwrap`/`expect`/`panic` anywhere. |
-| IV · Justified optimization | Rust now; a Zig on-router agent only when profiling demands it. |
-| V · Reproducible builds | `rust-toolchain.toml` + `Cargo.lock` pin everything; `scripts/reproducible-build.sh` self-verifies byte-identical binaries. |
-| V · Zero-touch gates | CI: `fmt --check` + `clippy -D warnings` + `test`, all blocking. |
+| Code is a liability | Every generic mechanism lives once in `sovds`; the router only supplies its domain. |
+| Agnostic core | `core`/`sovds` are `no_std`; all I/O is injected via `ports` traits. |
+| Dependency quarantine | Zero third-party crates anywhere in the workspace. |
+| Invalid states unrepresentable | Subsystems are enums, not bool soups; `State` is an ADT; `Source`/diagnosed-fault/injection-label can never be confused. |
+| Zero global state | `decide` takes state + config explicitly; no statics. |
+| ACID / rollback | `Actuator` returns `Ok` only after verifying the post-condition. |
+| Compile-time enforcement | `#![forbid(unsafe_code)]`; clippy denies unwrap/panic/index/overflow. |
+| Bounded execution | Fixed node array; finite escalation ladder; saturating math. |
+| Graceful degradation | `Unknown` readings never trigger action; notify failures are non-fatal; integrity checks alert, never self-destruct. |
+| No panic | Errors are `Result` values; no `unwrap`/`expect`/`panic` anywhere. |
+| Justified optimization | Rust now; a Zig on-router agent only when profiling demands it. |
+| Reproducible builds | `rust-toolchain.toml` + `Cargo.lock` pin everything; `scripts/reproducible-build.sh` self-verifies byte-identical binaries. |
+| Zero-touch gates | CI: `fmt --check` + `clippy -D warnings` + `test`, all blocking. |
 | IP Shield | AGPL-3.0-or-later, signed commits, `SHA256SUMS` + OpenTimestamps. See [security posture](docs/SECURITY-POSTURE.md). |
 
 ## Build & verify
@@ -103,7 +103,7 @@ with backoff** (never thrash). Recovery is honored immediately at any point.
 cargo fmt --all --check                      # formatting is not negotiable
 cargo clippy --all-targets --locked -- -D warnings   # warnings are errors
 cargo test --workspace --locked              # deterministic unit tests
-sh scripts/reproducible-build.sh --print     # the principle: all binaries byte-identical
+sh scripts/reproducible-build.sh --print     # reproducibility check: all binaries byte-identical
 sh scripts/verify-integrity.sh               # installed binaries match SHA256SUMS
 ```
 

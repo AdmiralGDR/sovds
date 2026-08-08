@@ -17,13 +17,13 @@
 //! the diagnosed fault, the injection label); the domain owns its `Obs`/`Annot`
 //! tokens, writing them (each with a leading space) and parsing them back through a
 //! small [`Domain::Builder`] accumulator. This keeps the whole record format
-//! self-describing and order-tolerant (the principle: honest, hostile-input-safe), while
+//! self-describing and order-tolerant (honest, hostile-input-safe), while
 //! the domain stays the single source of truth for what its own fields mean.
 
 use core::fmt;
 
 /// Why a serialized record token could not be parsed. Kind plus the offending line
-/// (the caller's context) is enough to reproduce (the principle: errors are never
+/// (the caller's context) is enough to reproduce (errors are never
 /// silent).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -48,7 +48,7 @@ pub enum Accept {
 /// A system plugged into the toolkit: its observation type, its fault vocabulary,
 /// and how both serialise into the record line.
 ///
-/// Implementations are pure and allocation-free — no clock, no I/O (the principle). The
+/// Implementations are pure and allocation-free — no clock, no I/O. The
 /// toolkit drives them; they never reach outward themselves.
 ///
 /// The domain type itself is a zero-size tag; the supertraits (`Copy + Eq +
@@ -113,7 +113,7 @@ pub trait Domain: Copy + Eq + core::fmt::Debug {
     /// Stable names of the observation's scalar **signals** — the numeric columns
     /// of a flat feature table (see [`crate::export`]), also the inputs an anomaly
     /// analysis would score. Purely raw values exposed from the observation, no
-    /// derived features (that is the model's job, not the toolkit's — the principle).
+    /// derived features (that is the model's job, not the toolkit's).
     ///
     /// Default: none. A domain that has no tabular signals, or does not need the
     /// export, simply does not override this.
@@ -123,7 +123,7 @@ pub trait Domain: Copy + Eq + core::fmt::Debug {
 
     /// Emit the observation's scalar signal **values**, in the exact same order as
     /// [`Self::signal_names`], via `sink`. Use a sentinel (`-1`) for "not measured"
-    /// so a column is always present (the principle: absence is explicit, never a fake
+    /// so a column is always present (absence is explicit, never a fake
     /// zero). Default: emits nothing.
     fn signals(obs: &Self::Obs, sink: &mut dyn FnMut(i64)) {
         let _ = (obs, sink);

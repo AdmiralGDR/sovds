@@ -1,10 +1,10 @@
 // Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Classification metrics — how you *know* a model got better (the principle: metrics
+//! Classification metrics — how you *know* a model got better (metrics
 //! before theories; you may not claim an improvement you did not measure).
 //!
 //! Everything is integer, reported in **per-mille** (‰, ×1000) so a fraction like
-//! 0.936 is the integer `936` — deterministic and float-free (the principle). The
+//! 0.936 is the integer `936` — deterministic and float-free. The
 //! headline number for an imbalanced problem is [`Metrics::macro_f1_pm`]: the mean
 //! F1 across classes, which a model cannot inflate by ignoring the rare classes.
 

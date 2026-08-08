@@ -7,8 +7,8 @@
 //! while the laptop was off or asleep is validated, deduplicated against the
 //! records already on disk, replayed through the SAME pure decision pipeline the
 //! live brain uses, and appended with `src=backfill`. At-least-once delivery +
-//! dedup = idempotent and loss-free (the principle); every skip is counted and
-//! reported, never silent (the principle).
+//! dedup = idempotent and loss-free; every skip is counted and
+//! reported, never silent.
 
 use sovereign_adapters::backfill::{confirm_drained, dedupe, drain, parse_buffer_line, Sample};
 use sovereign_adapters::dataset;

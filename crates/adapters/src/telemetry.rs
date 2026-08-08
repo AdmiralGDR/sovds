@@ -4,8 +4,7 @@
 //! the boundary before it reaches the sovereign core.
 //!
 //! The router runs [`REMOTE_TELEMETRY_SCRIPT`], which emits a tiny, line-based
-//! `key=value` contract. [`parse_snapshot`] is the boundary guard (the principle:
-//! all external input is hostile): it accepts only well-formed values and turns
+//! `key=value` contract. [`parse_snapshot`] is the boundary guard (//! all external input is hostile): it accepts only well-formed values and turns
 //! everything else into [`ProbeError::Malformed`]. It is pure, so the whole
 //! parsing surface is unit-testable without a router.
 //!
@@ -24,10 +23,10 @@ use sovereign_core::ports::{Observation, TelemetrySource};
 
 /// The contract executed on the router. Each probe is isolated: if one fails, it
 /// reports `unknown`/`dead` for its own key rather than failing the whole
-/// snapshot (the principle: graceful degradation at the source). The Clash secret is
+/// snapshot (graceful degradation at the source). The Clash secret is
 /// read from the router's own config so it never travels in this string.
 ///
-/// This is the **single source** of the telemetry contract (the principle: no duplicated
+/// This is the **single source** of the telemetry contract (no duplicated
 /// logic) — the exact same `deploy/router/telemetry.sh` the router-side
 /// `sovereign-probe` sources into the fallback buffer, embedded here at compile
 /// time so the collector and the probe can never diverge.
@@ -68,7 +67,7 @@ pub fn parse_snapshot(text: &str) -> Result<Observation, ProbeError> {
                     node_slot = node_slot.saturating_add(1);
                 }
                 // Nodes beyond MAX_NODES are dropped: the core reasons about a
-                // bounded set (the principle), and extra measurements are not fatal.
+                // bounded set, and extra measurements are not fatal.
             }
             "wanok" => {
                 aux.wan_reach = match value {

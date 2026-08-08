@@ -5,7 +5,7 @@
 //!
 //! This is where policy meets the world, but the world is still held at arm's
 //! length — telemetry, actuation, notification, and even sleeping are all
-//! injected (the principle). Two disciplines from the set of principles live here explicitly:
+//! injected. Two disciplines from the set of principles live here explicitly:
 //! **graceful degradation** (a failed probe becomes an all-`Unknown` observation,
 //! never a crash) and **bounded execution** (each cycle does a fixed amount of
 //! timeout-guarded work and the loop can be capped).
@@ -20,7 +20,7 @@ use sovereign_core::record::{Outcome, Record, RouterAnnot, Source};
 use std::time::Duration;
 
 /// Ties the core state machine to its ports. Holds the only mutable state in the
-/// system, and holds it explicitly (the principle: no hidden globals).
+/// system, and holds it explicitly (no hidden globals).
 pub struct Supervisor<T, A, N> {
     telemetry: T,
     actuator: A,
@@ -85,7 +85,7 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
 
         if is_notable(cycle.reason) {
             // A failed push is logged by the caller and otherwise ignored: the
-            // notifier is a courtesy and must never disturb the core (the principle).
+            // notifier is a courtesy and must never disturb the core.
             let _ = self.notifier.notify(cycle.reason);
         }
 
@@ -124,7 +124,7 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
 
     /// Drive the loop. `budget` caps the cycle count (`None` runs as a service);
     /// `clock`, `sleep`, and `observe` are all injected so tests neither block nor
-    /// read a real clock (the principle). Returns the number of cycles completed.
+    /// read a real clock. Returns the number of cycles completed.
     pub fn run<C, S, O>(
         &mut self,
         budget: Option<u64>,

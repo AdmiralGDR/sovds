@@ -6,7 +6,7 @@
 //! The inverse of [`crate::recorder`]: it walks the rotated generations oldest-first
 //! then the live file, parsing each line through the boundary guard
 //! ([`crate::record::parse_record`]). Corrupt or truncated lines are counted and
-//! skipped, never fatal (the principle: a single bad line must not lose the corpus).
+//! skipped, never fatal (a single bad line must not lose the corpus).
 
 use crate::domain::Domain;
 use crate::record::{parse_record, Record};

@@ -9,7 +9,7 @@
 //! ([`parse_snapshot`]), drop anything the dataset already covers, and hand the
 //! survivors back for replay + durable append.
 //!
-//! Loss-free by design (the principle): the drain protocol first folds any leftover
+//! Loss-free by design: the drain protocol first folds any leftover
 //! `.drain` file from a previously crashed backfill together with the live
 //! buffer, and the remote `.drain` is deleted only after the local append
 //! succeeded. That makes delivery at-least-once — safe, because dedup makes the
@@ -43,7 +43,7 @@ pub struct Sample {
 ///
 /// The tokens after `ts=` are exactly the snapshot contract, space-joined; they
 /// are re-joined with newlines and validated by the existing [`parse_snapshot`]
-/// boundary guard — no second parser surface to maintain (DRY, the principle).
+/// boundary guard — no second parser surface to maintain (DRY).
 pub fn parse_buffer_line(line: &str) -> Result<Sample, ProbeError> {
     let mut ts: Option<u64> = None;
     let mut snapshot = String::new();
@@ -110,7 +110,7 @@ pub fn drain<R: CommandRunner>(ssh: &SshExec<'_, R>) -> Result<Vec<String>, RunE
 }
 
 /// Delete the router-side `.drain` file — call only after the drained samples
-/// have been durably appended to the local dataset (the principle: the hand-off
+/// have been durably appended to the local dataset (the hand-off
 /// completes atomically or the data stays on the router for the next attempt).
 pub fn confirm_drained<R: CommandRunner>(ssh: &SshExec<'_, R>) -> Result<(), RunError> {
     ssh.exec(&format!("rm -f {b}.drain", b = BUFFER))

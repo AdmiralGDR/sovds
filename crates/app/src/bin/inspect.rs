@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! `sovereign-inspect` — read the collected record log and print dataset metrics.
 //!
-//! This is the "metrics before theories" instrument (the principle): it turns the
+//! This is the "metrics before theories" instrument: it turns the
 //! accumulating trail into the numbers that decide the next move — class balance
 //! (is a model even warranted?), real latency distributions (tune the adaptive
 //! thresholds from data, not guesses), and per-node availability.

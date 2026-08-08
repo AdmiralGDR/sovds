@@ -5,7 +5,7 @@
 //! The record log is self-describing but not rectangular. This turns it into a flat
 //! `t ts probed class inject <signals…>` table that pandas, DuckDB, or a training
 //! pipeline can read directly — the structured, model-ready form of the dataset,
-//! with zero feature engineering (raw signals only; the principle).
+//! with zero feature engineering (raw signals only).
 //!
 //! Usage: `sovereign-export [log] [out.tsv]` (defaults: XDG log → stdout).
 

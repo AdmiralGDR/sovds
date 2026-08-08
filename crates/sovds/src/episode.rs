@@ -10,7 +10,7 @@
 //! This module segments a [`Record`] stream into episodes with a pure, streaming
 //! state machine: feed records in order, each closed episode is emitted as it ends.
 //! Generic over the caller's [`Domain`], `no_std`, allocation-free, holding exactly
-//! one open episode at a time (the principle/III: bounded state, no hidden buffers).
+//! one open episode at a time (bounded state, no hidden buffers).
 //!
 //! Segmentation is conservative about continuity: an episode never spans a
 //! collection-run boundary (`tick == 0`, a restart = a discontinuity), and a brief

@@ -18,7 +18,7 @@ use crate::stats::{Cusum, Ewma};
 
 /// Tunable parameters of the adaptive layer. Kept as data, not magic constants,
 /// so they can be set from evidence and A/B-compared by replaying real telemetry
-/// (the principle: metrics before theories — no blind constants).
+/// (metrics before theories — no blind constants).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FleetConfig {
     /// EWMA smoothing denominator for a node's latency baseline (larger = slower).
@@ -185,7 +185,7 @@ impl NodeModel {
 
 /// The learned state of the whole tunnel: one model per exit node plus a model of
 /// the currently selected path. Fixed capacity keeps it allocation-free and every
-/// scan bounded (the principle & IV).
+/// scan bounded.
 #[derive(Debug, Clone, Copy)]
 pub struct Fleet {
     nodes: [NodeModel; MAX_NODES],

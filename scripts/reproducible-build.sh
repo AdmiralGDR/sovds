@@ -1,5 +1,5 @@
 #!/bin/sh
-# Reproducible-build gate (the internal engineering charter, the principle).
+# Reproducible-build gate (the principle).
 #
 # The build must be a pure function of the source: same commit -> byte-identical
 # bytes, for EVERY shipped binary, not just one. We remove the two remaining

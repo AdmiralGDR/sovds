@@ -16,7 +16,7 @@ default = ["std"]
 std = []
 
 [dependencies]
-# Intentionally empty and it must stay that way (the internal engineering charter, the principle & I): a
+# Intentionally empty and it must stay that way (the principle & I): a
 # from-scratch model with no ML framework underneath — no ndarray, no linfa, no
 # torch. The math is ours, integer, and reproducible.
 

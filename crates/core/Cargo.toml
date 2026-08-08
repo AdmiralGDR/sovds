@@ -9,7 +9,7 @@ publish = false
 
 [dependencies]
 # The only dependency is the sovereign-family dataset toolkit — a sibling crate in
-# this workspace, itself zero-third-party (the internal engineering charter, the principle & I). `default-
+# this workspace, itself zero-third-party (the principle & I). `default-
 # features = false` keeps it `no_std`, so the core stays no_std and can be pulled
 # from an archive in ten years and compiled offline with only the pinned compiler.
 sovds = { path = "../sovds", default-features = false }

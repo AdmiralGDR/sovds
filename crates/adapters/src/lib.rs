@@ -5,7 +5,7 @@
 //! This crate is the only place allowed to touch the outside world, and it does
 //! so exclusively through the operating system's own tools — `ssh` to reach the
 //! router, `curl` to publish notifications — never through a third-party crate
-//! (the internal engineering charter, the principle & I: dependency quarantine, code longevity). Each module
+//! (the principle & I: dependency quarantine, code longevity). Each module
 //! implements one of the contracts declared in [`sovereign_core::ports`].
 //!
 //! The design keeps the hostile edges thin and pure where it matters: command

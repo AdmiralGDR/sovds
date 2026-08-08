@@ -1,7 +1,8 @@
 # Contributing
 
-This repo is built to `the internal engineering charter` (the the principles of Sovereign Engineering). The
-rules below are not style preferences — they are the the principles made mechanical.
+This repo is built to this project's internal engineering principles (the the principles
+of Sovereign Engineering). The rules below are not style preferences — they are
+the the principles made mechanical.
 
 ## The gates (all enforced by CI — a commit that fails one is not working code)
 

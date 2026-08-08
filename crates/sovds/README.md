@@ -1,5 +1,7 @@
 # sovds — Sovereign Dataset Toolkit
 
+🇬🇧 English | [🇷🇺 Русский](README.ru.md)
+
 Build **labelled, ground-truth datasets from live systems** — collect telemetry,
 deliberately and safely induce faults with provenance labels, segment the stream
 into fault *episodes*, and measure detection and rollback-safety. So a monitoring
@@ -12,7 +14,7 @@ dataset pipeline for free.
 
 ## Why
 
-Built to the *this project's internal engineering principles* (`the internal engineering charter`):
+Built to this project's internal engineering principles:
 
 - **Zero dependencies, agnostic core (the principle & I).** No third-party crates. The
   core compiles `no_std` (the on-disk parts sit behind the default `std` feature).
@@ -104,4 +106,4 @@ sovds = { path = "…/sovds", default-features = false }
 
 ## Licence
 
-MIT OR Apache-2.0.
+AGPL-3.0-or-later. See [LICENSE-AGPL](../../LICENSE-AGPL).

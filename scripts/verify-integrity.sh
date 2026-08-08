@@ -4,7 +4,7 @@
 #
 # verify-integrity.sh — checks installed binaries against SHA256SUMS.
 #
-# the internal engineering charter IP-Shield calls for self-integrity checks. On THIS system
+# IP-Shield principles call for self-integrity checks. On THIS system
 # (laptop + a home router that also runs live self-heal with sudo and keeps
 # the household on the internet) an unconditional "self-destruct on mismatch"
 # is a new failure mode, not a defense — a false positive would take out

@@ -15,9 +15,9 @@
 //! fault-class vocabulary, and how both serialise into the record line — and gets
 //! the whole dataset pipeline for free.
 //!
-//! ## set of principles
+//! ## Design principles
 //!
-//! Built to the "this project's internal engineering principles" (`the internal engineering charter`):
+//! Built to this project's internal engineering principles:
 //! * **Zero dependencies, agnostic core (the principle & I).** This crate has no
 //!   third-party dependencies and compiles `no_std` by default; the on-disk edges
 //!   live behind the `std` feature. Embed it without dragging a dependency tree.

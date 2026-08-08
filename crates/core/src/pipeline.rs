@@ -1,3 +1,5 @@
+// Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! One cycle of pure decision logic.
 //!
 //! Folds a telemetry observation into the adaptive models, lets the learned

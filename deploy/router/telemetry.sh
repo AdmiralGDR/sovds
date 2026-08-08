@@ -1,4 +1,6 @@
 #!/bin/sh
+# Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # sovereign telemetry — the SINGLE source of what telemetry is gathered and how
 # each token is named. Emits one `key=value` token per line to stdout, which the
 # brain's parser (`parse_snapshot`) validates.

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Canonical fault scenarios — a labelled ground-truth suite for the rules.
 //!
 //! Passive observation of a healthy network never produces the rare faults

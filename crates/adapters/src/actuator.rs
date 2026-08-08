@@ -1,3 +1,5 @@
+// Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Actuator adapter: apply a remediation on the router and verify it took hold.
 //!
 //! Every method here honours the ACID contract of [`Actuator`] (the principle): it

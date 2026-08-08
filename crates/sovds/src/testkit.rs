@@ -1,3 +1,5 @@
+// Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! A minimal example domain used across the toolkit's own tests — a stand-in for
 //! a third-party integration. It models a service whose observation is a load
 //! percentage, whose annotation is whether a remedy was applied, and whose faults

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Notification adapter: turn a supervisor [`Reason`] into a human-legible push
 //! via ntfy, sent with `curl`.
 //!

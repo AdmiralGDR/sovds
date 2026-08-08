@@ -1,3 +1,5 @@
+// Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! `sovereign-inspect` — read the collected record log and print dataset metrics.
 //!
 //! This is the "metrics before theories" instrument (the principle): it turns the

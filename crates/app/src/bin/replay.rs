@@ -1,3 +1,5 @@
+// Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! `sovereign-replay` — replay the collected telemetry through the decision
 //! pipeline under different adaptive configs and count what each *would* have
 //! done. This turns tuning from a guess into a measurement (the principle): run it,

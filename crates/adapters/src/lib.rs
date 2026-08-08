@@ -1,3 +1,5 @@
+// Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! I/O bridges for the sovereign brain.
 //!
 //! This crate is the only place allowed to touch the outside world, and it does

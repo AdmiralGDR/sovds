@@ -84,9 +84,12 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
         };
 
         if is_notable(cycle.reason) {
-            // A failed push is logged by the caller and otherwise ignored: the
-            // notifier is a courtesy and must never disturb the core.
-            let _ = self.notifier.notify(cycle.reason);
+            // The notifier is a courtesy and must never disturb the core, but a
+            // failure still has to reach someone — silently discarding it left no
+            // trace at all that a push was ever attempted.
+            if let Err(err) = self.notifier.notify(cycle.reason) {
+                eprintln!("sovereign: notification failed ({err:?}); continuing");
+            }
         }
 
         self.tick = self.tick.saturating_add(1);

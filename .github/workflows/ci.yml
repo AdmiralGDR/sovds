@@ -30,7 +30,7 @@ jobs:
       - name: The sovds core stays no_std
         run: cargo build -p sovds --no-default-features --locked
 
-      # Reproducibility is an the principle: the same source must produce
+      # Reproducibility is a core guarantee: the same source must produce
       # byte-identical binaries. The gate self-verifies by building twice and
       # comparing every shipped binary's hash.
       - name: Builds are reproducible

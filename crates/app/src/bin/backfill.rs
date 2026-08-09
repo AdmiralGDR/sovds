@@ -46,7 +46,9 @@ fn main() -> ExitCode {
     };
     if lines.is_empty() {
         eprintln!("sovereign-backfill: buffer empty; nothing to do");
-        let _ = confirm_drained(&ssh);
+        if let Err(err) = confirm_drained(&ssh) {
+            eprintln!("sovereign-backfill: confirm failed ({err:?}); will re-drain next run");
+        }
         return ExitCode::SUCCESS;
     }
 

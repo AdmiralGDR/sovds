@@ -16,7 +16,11 @@
 #   * Graceful: a working resolver is left untouched; failure only ever
 #     restarts sing-box (cheap, reversible), never touches podkop's server
 #     list or config — that escalation stays podkop-selfheal's job.
-#   * No silent failures: every branch logs to syslog with context.
+#   * No silent failures: every branch logs to syslog with context. This
+#     includes the check itself — see the fail-closed note on `resolves()`
+#     below (found live, 2026-08-09: a killed-by-timeout nslookup left a
+#     truncated, unrecognized output that matched no known-failure string,
+#     so the old text-pattern check silently called it healthy).
 #
 # Usage: dns-selfheal          (normal: rate-limited)
 #        dns-selfheal force    (skip rate limit; for testing)
@@ -27,7 +31,7 @@ TAG=dns-selfheal
 STATE=/tmp/dns-selfheal.state
 OUT=/tmp/dns-selfheal.out
 TESTDOMAIN=cp.cloudflare.com
-TIMEOUT=4
+TIMEOUT=6
 MIN_INTERVAL=300      # at most one restart per 5 min
 
 MODE="${1:-run}"
@@ -35,6 +39,16 @@ log() { logger -t "$TAG" "$1"; }
 
 # Resolve $TESTDOMAIN via the LAN resolver (127.0.0.1 = dnsmasq), with a hard
 # timeout since busybox here has no `timeout` applet.
+#
+# Fail-CLOSED by construction: success requires positive proof (nslookup
+# exited 0 AND the output has a resolved `Address:` line beyond the "Server:"
+# header). Anything else — a non-zero exit, a timeout-kill (wait reports 137),
+# a truncated/unrecognized output — falls through to failure. The previous
+# version matched against a list of known-failure strings and defaulted to
+# success for anything unrecognized; a killed nslookup's partial output
+# ("Server:\t127.0.0.1" with nothing after it) matched none of them and was
+# silently reported healthy. A check that can't tell "healthy" from "I don't
+# know" must not answer "healthy".
 resolves() {
     : > "$OUT"
     nslookup "$TESTDOMAIN" 127.0.0.1 > "$OUT" 2>&1 &
@@ -42,12 +56,12 @@ resolves() {
     ( sleep "$TIMEOUT"; kill -9 "$pid" 2>/dev/null ) &
     watcher=$!
     wait "$pid" 2>/dev/null
+    rc=$?
     kill "$watcher" 2>/dev/null
     wait "$watcher" 2>/dev/null
-    case "$(cat "$OUT" 2>/dev/null)" in
-        *"can't find"*|*"Can't find"*|*"No answer"*|*"connection timed out"*|"") return 1 ;;
-        *) return 0 ;;
-    esac
+    [ "$rc" -eq 0 ] || return 1
+    addr_count=$(grep -c "^Address" "$OUT" 2>/dev/null || echo 0)
+    [ "${addr_count:-0}" -ge 2 ]
 }
 
 resolves && exit 0

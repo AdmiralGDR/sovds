@@ -22,7 +22,26 @@ D=$(curl -s -m 8 -H "Authorization: Bearer $S" "http://192.168.1.1:9090/proxies/
 if [ -n "$D" ]; then echo "tunnel=ok:$D"; else echo "tunnel=dead"; fi
 G=$(curl -s -m 8 -H "Authorization: Bearer $S" "http://192.168.1.1:9090/group/vless_out-out/delay?url=http://cp.cloudflare.com/generate_204&timeout=6000" 2>/dev/null)
 echo "$G" | tr ',{}' '\n' | sed -n 's/.*"vless_out-\([0-9][0-9]*\)-out": *\([0-9][0-9]*\).*/node=\1:\2/p'
-if nslookup youtube.com 127.0.0.1 2>/dev/null | grep -qE 'Address[0-9]*: *198\.1[89]\.'; then echo "dns=ok"; else echo "dns=failing"; fi
+# nslookup has no timeout flag on this busybox and every other network call
+# here is `curl -m`-bounded — guard this one the same way (background + kill),
+# so a hung resolver can never hang the whole probe cycle. Found live 2026-08-09
+# via a related bug in dns-selfheal: nslookup CAN take longer than assumed when
+# the resolver is degraded, and an unguarded call has no upper bound at all.
+DNS_OUT=/tmp/.telemetry-dns-out.$$
+nslookup youtube.com 127.0.0.1 > "$DNS_OUT" 2>&1 &
+dns_pid=$!
+( sleep 5; kill -9 "$dns_pid" 2>/dev/null ) &
+dns_watcher=$!
+wait "$dns_pid" 2>/dev/null
+dns_rc=$?
+kill "$dns_watcher" 2>/dev/null
+wait "$dns_watcher" 2>/dev/null
+if [ "$dns_rc" -eq 0 ] && grep -qE 'Address[0-9]*: *198\.1[89]\.' "$DNS_OUT" 2>/dev/null; then
+  echo "dns=ok"
+else
+  echo "dns=failing"
+fi
+rm -f "$DNS_OUT"
 if curl -s -o /dev/null -m 5 http://1.1.1.1 2>/dev/null || curl -s -o /dev/null -m 5 http://8.8.8.8 2>/dev/null; then echo "wanok=1"; else echo "wanok=0"; fi
 awk '{ printf "load=%d\n", $1 * 100 }' /proc/loadavg 2>/dev/null
 awk '/MemAvailable/ { printf "mem=%d\n", $2 }' /proc/meminfo 2>/dev/null

@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # podkop-selfheal — autonomous tunnel self-healing for podkop.
 #
-# The provider (the provider) is periodically IP-blocked by the ISP's DPI; the
+# The provider is periodically IP-blocked by the ISP's DPI; the
 # subscription rotates in fresh (unblocked) foreign servers. This heals that:
 # when the tunnel stops routing, it re-fetches the subscription, picks fresh
 # FOREIGN Reality servers, and reloads podkop — with no human in the loop.

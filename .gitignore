@@ -6,3 +6,4 @@
 *.pem
 *.key
 !crates/**/*.key.rs
+*.ots.bak

@@ -27,7 +27,25 @@ grep -E '^password:' '$ROUTER_PASSWORD_FILE' | sed 's/^password:[[:space:]]*//' 
 SH
 chmod 700 ~/.local/share/sovereign/askpass.sh
 
-# 3. Install and start the service
+# 3. Pin the router's SSH host key (REQUIRED — host-key checking is strict).
+#    Read the key on the router itself (console / a session you already trust),
+#    not over the network you are trying to secure:
+#      dropbearkey -y -f /etc/dropbear/dropbear_ed25519_host_key | grep ^ssh-
+#    Then EITHER pin it directly in the unit:
+#      Environment=SOVEREIGN_HOST_KEY=ssh-ed25519 AAAA...
+#    OR keep a dedicated known_hosts file:
+mkdir -p ~/.config/sovereign
+echo "192.168.1.1 ssh-ed25519 AAAA...from-router-console..." >> ~/.config/sovereign/known_hosts
+#    After a reflash the router key changes and every SSH call fails with
+#    "SSH host key ... was REJECTED" in the journal: re-pin the new key.
+
+# 4. (Recommended) Key auth instead of the root password:
+ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_sovereign_router
+#    append ~/.ssh/id_sovereign_router.pub to /etc/dropbear/authorized_keys on
+#    the router, set SOVEREIGN_SSH_IDENTITY, and drop SOVEREIGN_ASKPASS. With no
+#    askpass configured, password auth is disabled entirely (BatchMode=yes).
+
+# 5. Install and start the service
 cp deploy/sovereign-collector.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now sovereign-collector.service
@@ -40,6 +58,12 @@ loginctl enable-linger "$USER"   # keep collecting across logout/reboot
   the brain uses the `NullActuator` and cannot touch the router (safety by
   construction). Actuation is a separate, deliberate decision — enable it
   only once accumulated data has validated the decision rules.
+- **Router identity is verified.** SSH runs with `StrictHostKeyChecking=yes`
+  against `SOVEREIGN_KNOWN_HOSTS` (or `~/.ssh/known_hosts`), or against the
+  single key pinned in `SOVEREIGN_HOST_KEY` (needs OpenSSH >= 8.5). Public-key
+  auth is always tried first; the askpass password is only a fallback. The
+  legacy accept-any-key mode exists only behind
+  `SOVEREIGN_SSH_INSECURE_ACCEPT_ANY_HOST_KEY=1` and is announced at startup.
 - **Bounded on disk.** The log rotates at `SOVEREIGN_LOG_MAX_BYTES` across
   `SOVEREIGN_LOG_GENERATIONS` files (~200 MB total here), so the trail grows in
   time without growing without bound (plus longevity).

@@ -9,6 +9,11 @@ ExecStart=%h/.local/bin/sovereign-backfill
 Environment=SOVEREIGN_HOST=192.168.1.1
 Environment=SOVEREIGN_USER=root
 Environment=SOVEREIGN_ASKPASS=%h/.local/share/sovereign/askpass.sh
+# Host-key verification is strict. Pin the router key (see deploy/README.md):
+Environment=SOVEREIGN_KNOWN_HOSTS=%h/.config/sovereign/known_hosts
+#Environment=SOVEREIGN_HOST_KEY=ssh-ed25519 AAAA...
+# Prefer key auth; once set up, remove SOVEREIGN_ASKPASS above:
+#Environment=SOVEREIGN_SSH_IDENTITY=%h/.ssh/id_sovereign_router
 Environment=SOVEREIGN_SSH_CONNECT_S=8
 Environment=SOVEREIGN_TELEMETRY_S=20
 Environment=SOVEREIGN_LOG=%h/.local/share/sovereign/records.log

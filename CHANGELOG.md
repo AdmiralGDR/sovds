@@ -5,6 +5,20 @@ Brain reference implementation. Dates are the working timeline, not release tags
 
 ## Unreleased
 
+### Security
+- SSH host keys are now checked. The bridge used to run with
+  `StrictHostKeyChecking=no` and `/dev/null` known_hosts, so anyone who could
+  answer on the router address got the root password. `SshConfig::host_key`
+  selects strict known_hosts (default, `SOVEREIGN_KNOWN_HOSTS`), a pinned key
+  (`SOVEREIGN_HOST_KEY`), or the old behaviour behind
+  `SOVEREIGN_SSH_INSECURE_ACCEPT_ANY_HOST_KEY=1`. A rejected key returns
+  `RunError::HostKeyRejected` and prints how to fix it.
+- Public-key auth is tried first; `SOVEREIGN_SSH_IDENTITY` passes a key with
+  `IdentitiesOnly=yes`. The askpass password is only a fallback, and password
+  auth is off (`BatchMode=yes`) when no askpass is set.
+- Breaking: pin the router key (see `deploy/README.md`) before upgrading, or
+  every SSH call is refused.
+
 ### Added
 - **`sovds` — Sovereign Dataset Toolkit**: a domain-agnostic, zero-dependency,
   `no_std` library extracted from the router brain. Implement one `Domain` trait for

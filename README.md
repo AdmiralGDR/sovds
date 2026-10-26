@@ -26,7 +26,7 @@ what was deliberately not, and why.
 ## Why off-router
 
 The router (MediaTek MT7981, dual Cortex-A53, ~256 MB RAM, no NPU) can run a
-robust rules engine but not real analytics or an LLM. So the design splits
+rules engine but not real analytics or an LLM. So the design splits
 cleanly: a tiny, dependency-free decision **core** that could run anywhere, fed
 by **adapters** that do all the I/O. The same core scales from a shell-driven
 poller today to an ML/LLM-assisted brain on a home server, without a rewrite.

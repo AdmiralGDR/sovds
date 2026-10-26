@@ -7,7 +7,7 @@
 //! the core. Nothing here is a global — the values are handed explicitly to the
 //! composition root.
 
-use sovereign_adapters::ssh::SshConfig;
+use sovereign_adapters::ssh::{HostKeyPolicy, PinnedHostKey, SshConfig};
 use sovereign_core::domain::LatencyMs;
 use sovereign_core::fleet::FleetConfig;
 use sovereign_core::fsm::Config as CoreConfig;
@@ -50,6 +50,12 @@ impl AppConfig {
             user: var("SOVEREIGN_USER").unwrap_or_else(|| "root".to_string()),
             bind: var("SOVEREIGN_BIND"),
             askpass: var("SOVEREIGN_ASKPASS"),
+            identity_file: var("SOVEREIGN_SSH_IDENTITY"),
+            host_key: host_key_policy(
+                var("SOVEREIGN_SSH_INSECURE_ACCEPT_ANY_HOST_KEY").as_deref(),
+                var("SOVEREIGN_HOST_KEY").as_deref(),
+                var("SOVEREIGN_KNOWN_HOSTS"),
+            ),
             connect_timeout_s: parse_u32("SOVEREIGN_SSH_CONNECT_S", 8),
         };
         Self {
@@ -93,6 +99,24 @@ impl AppConfig {
     }
 }
 
+/// Resolve the host-key policy. Precedence: explicit insecure opt-in (must be
+/// exactly `1`), then a pinned key, then strict known_hosts checking. A
+/// malformed pinned key does NOT weaken security: it falls back to strict
+/// known_hosts checking, which rejects an unknown router loudly.
+fn host_key_policy(
+    insecure: Option<&str>,
+    pinned: Option<&str>,
+    known_hosts: Option<String>,
+) -> HostKeyPolicy {
+    if insecure == Some("1") {
+        return HostKeyPolicy::InsecureAcceptAny;
+    }
+    match pinned.and_then(PinnedHostKey::parse) {
+        Some(key) => HostKeyPolicy::Pinned(key),
+        None => HostKeyPolicy::KnownHosts { file: known_hosts },
+    }
+}
+
 /// The canonical dataset location on the laptop (XDG data dir), shared as the
 /// default by every binary.
 fn default_log_path() -> PathBuf {
@@ -117,4 +141,51 @@ fn parse_u32(key: &str, default: u32) -> u32 {
     var(key)
         .and_then(|value| value.parse::<u32>().ok())
         .unwrap_or(default)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::host_key_policy;
+    use sovereign_adapters::ssh::HostKeyPolicy;
+
+    const KEY: &str =
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl";
+
+    #[test]
+    fn default_is_strict_known_hosts() {
+        assert_eq!(
+            host_key_policy(None, None, None),
+            HostKeyPolicy::KnownHosts { file: None }
+        );
+    }
+
+    #[test]
+    fn insecure_requires_exact_opt_in() {
+        assert_eq!(
+            host_key_policy(Some("1"), Some(KEY), None),
+            HostKeyPolicy::InsecureAcceptAny
+        );
+        assert_ne!(
+            host_key_policy(Some("yes"), None, None),
+            HostKeyPolicy::InsecureAcceptAny
+        );
+    }
+
+    #[test]
+    fn pinned_key_wins_over_known_hosts() {
+        assert!(matches!(
+            host_key_policy(None, Some(KEY), Some("/x".to_string())),
+            HostKeyPolicy::Pinned(_)
+        ));
+    }
+
+    #[test]
+    fn malformed_pin_falls_back_to_strict_not_insecure() {
+        assert_eq!(
+            host_key_policy(None, Some("garbage"), Some("/x".to_string())),
+            HostKeyPolicy::KnownHosts {
+                file: Some("/x".to_string())
+            }
+        );
+    }
 }

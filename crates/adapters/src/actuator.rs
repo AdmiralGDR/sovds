@@ -143,7 +143,9 @@ impl Actuator for NullActuator {
 fn map_run_err(err: RunError) -> ActError {
     match err {
         RunError::Timeout => ActError::Timeout,
-        RunError::EmptyArgv | RunError::Spawn | RunError::Io => ActError::Unreachable,
+        RunError::EmptyArgv | RunError::Spawn | RunError::Io | RunError::HostKeyRejected => {
+            ActError::Unreachable
+        }
     }
 }
 

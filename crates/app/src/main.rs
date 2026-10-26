@@ -45,9 +45,10 @@ fn main() -> ExitCode {
         "LIVE (actuation on)"
     };
     eprintln!(
-        "sovereign: {mode} — {}@{} every {}s (budget: {}), recording to {}",
+        "sovereign: {mode} — {}@{} (host key: {}) every {}s (budget: {}), recording to {}",
         cfg.ssh.user,
         cfg.ssh.host,
+        cfg.ssh.host_key,
         cfg.interval.as_secs(),
         cfg.budget
             .map_or_else(|| "service".to_string(), |n| n.to_string()),

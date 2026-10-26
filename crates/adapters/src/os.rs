@@ -50,6 +50,9 @@ pub enum RunError {
     Timeout,
     /// An I/O error occurred while talking to the child.
     Io,
+    /// The remote host's SSH key was unknown or did not match the pinned /
+    /// known key, so the connection was refused before any credential was sent.
+    HostKeyRejected,
 }
 
 /// The contract every command execution goes through. Kept as a trait so the

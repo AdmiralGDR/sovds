@@ -21,7 +21,8 @@
 //! # Client authentication
 //!
 //! Public-key auth is always offered first. Password auth (via askpass) is only
-//! enabled as a fallback when an askpass helper is configured.
+//! enabled as a fallback when an askpass helper is configured and the host key
+//! is verified; in the insecure mode the password is never offered.
 
 use crate::os::{CommandOutput, CommandRunner, RunError};
 use std::fmt;
@@ -198,7 +199,7 @@ pub fn build_remote_argv(cfg: &SshConfig, remote: &str) -> Vec<String> {
         push_opt(&mut argv, "IdentitiesOnly=yes".to_string());
     }
     push_opt(&mut argv, "PubkeyAuthentication=yes".to_string());
-    if cfg.askpass.is_some() {
+    if password_fallback_allowed(cfg) {
         push_opt(
             &mut argv,
             "PreferredAuthentications=publickey,password".to_string(),
@@ -219,10 +220,21 @@ pub fn build_remote_argv(cfg: &SshConfig, remote: &str) -> Vec<String> {
     argv
 }
 
+/// Password auth is only offered to a host whose key was verified. With
+/// [`HostKeyPolicy::InsecureAcceptAny`] the askpass helper is ignored, so an
+/// impostor on the router address can never collect the root password.
+fn password_fallback_allowed(cfg: &SshConfig) -> bool {
+    cfg.askpass.is_some() && cfg.host_key != HostKeyPolicy::InsecureAcceptAny
+}
+
 /// Environment overrides that make non-interactive password auth work. Empty
-/// when no askpass is configured (pure key auth).
+/// when no askpass is configured (pure key auth) or when the host key is not
+/// verified.
 #[must_use]
 pub fn ssh_env(cfg: &SshConfig) -> Vec<(String, String)> {
+    if !password_fallback_allowed(cfg) {
+        return Vec::new();
+    }
     match &cfg.askpass {
         Some(path) => vec![
             ("SSH_ASKPASS".to_string(), path.clone()),
@@ -399,6 +411,18 @@ mod tests {
         c.host_key = HostKeyPolicy::InsecureAcceptAny;
         let argv = build_remote_argv(&c, "true");
         assert!(has(&argv, "StrictHostKeyChecking=no"));
+    }
+
+    #[test]
+    fn insecure_mode_never_offers_the_password() {
+        let mut c = cfg();
+        c.host_key = HostKeyPolicy::InsecureAcceptAny;
+        let argv = build_remote_argv(&c, "true");
+        assert!(has(&argv, "PreferredAuthentications=publickey"));
+        assert!(has(&argv, "PasswordAuthentication=no"));
+        assert!(has(&argv, "BatchMode=yes"));
+        assert!(!has(&argv, "PreferredAuthentications=publickey,password"));
+        assert!(ssh_env(&c).is_empty());
     }
 
     #[test]

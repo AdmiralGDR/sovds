@@ -64,6 +64,8 @@ loginctl enable-linger "$USER"   # keep collecting across logout/reboot
   auth is always tried first; the askpass password is only a fallback. The
   legacy accept-any-key mode exists only behind
   `SOVEREIGN_SSH_INSECURE_ACCEPT_ANY_HOST_KEY=1` and is announced at startup.
+  In that mode the askpass password is never sent (key auth only), and a
+  pinned key in `SOVEREIGN_HOST_KEY` always takes precedence over it.
 - **Bounded on disk.** The log rotates at `SOVEREIGN_LOG_MAX_BYTES` across
   `SOVEREIGN_LOG_GENERATIONS` files (~200 MB total here), so the trail grows in
   time without growing without bound (plus longevity).

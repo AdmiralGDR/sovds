@@ -99,22 +99,37 @@ impl AppConfig {
     }
 }
 
-/// Resolve the host-key policy. Precedence: explicit insecure opt-in (must be
-/// exactly `1`), then a pinned key, then strict known_hosts checking. A
-/// malformed pinned key does NOT weaken security: it falls back to strict
-/// known_hosts checking, which rejects an unknown router loudly.
+/// Resolve the host-key policy. Precedence: a valid pinned key, then the
+/// explicit insecure opt-in (must be exactly `1`), then strict known_hosts
+/// checking. A pin always wins over the insecure switch, so leaving the
+/// switch set after pinning cannot silently undo the pin. A malformed pinned
+/// key does NOT weaken security: it falls back to strict known_hosts checking
+/// (never to insecure), which rejects an unknown router loudly.
 fn host_key_policy(
     insecure: Option<&str>,
     pinned: Option<&str>,
     known_hosts: Option<String>,
 ) -> HostKeyPolicy {
+    let pin = pinned.and_then(PinnedHostKey::parse);
+    if pinned.is_some() && pin.is_none() {
+        eprintln!(
+            "sovereign: SOVEREIGN_HOST_KEY is not a valid '<type> <base64>' key; \
+             ignoring it and using strict known_hosts checking"
+        );
+    }
+    if let Some(key) = pin {
+        if insecure == Some("1") {
+            eprintln!(
+                "sovereign: SOVEREIGN_HOST_KEY is set, so \
+                 SOVEREIGN_SSH_INSECURE_ACCEPT_ANY_HOST_KEY is ignored"
+            );
+        }
+        return HostKeyPolicy::Pinned(key);
+    }
     if insecure == Some("1") {
         return HostKeyPolicy::InsecureAcceptAny;
     }
-    match pinned.and_then(PinnedHostKey::parse) {
-        Some(key) => HostKeyPolicy::Pinned(key),
-        None => HostKeyPolicy::KnownHosts { file: known_hosts },
-    }
+    HostKeyPolicy::KnownHosts { file: known_hosts }
 }
 
 /// The canonical dataset location on the laptop (XDG data dir), shared as the
@@ -162,7 +177,7 @@ mod tests {
     #[test]
     fn insecure_requires_exact_opt_in() {
         assert_eq!(
-            host_key_policy(Some("1"), Some(KEY), None),
+            host_key_policy(Some("1"), None, None),
             HostKeyPolicy::InsecureAcceptAny
         );
         assert_ne!(
@@ -175,6 +190,14 @@ mod tests {
     fn pinned_key_wins_over_known_hosts() {
         assert!(matches!(
             host_key_policy(None, Some(KEY), Some("/x".to_string())),
+            HostKeyPolicy::Pinned(_)
+        ));
+    }
+
+    #[test]
+    fn a_valid_pin_wins_over_the_insecure_switch() {
+        assert!(matches!(
+            host_key_policy(Some("1"), Some(KEY), None),
             HostKeyPolicy::Pinned(_)
         ));
     }

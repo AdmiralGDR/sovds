@@ -16,6 +16,10 @@ Brain reference implementation. Dates are the working timeline, not release tags
 - Public-key auth is tried first; `SOVEREIGN_SSH_IDENTITY` passes a key with
   `IdentitiesOnly=yes`. The askpass password is only a fallback, and password
   auth is off (`BatchMode=yes`) when no askpass is set.
+- The insecure mode never offers the password: without a verified host key
+  only key auth is used, so an impostor cannot collect the root password.
+- A valid `SOVEREIGN_HOST_KEY` wins over the insecure switch, and a malformed
+  pin is reported on stderr instead of being dropped silently.
 - Breaking: pin the router key (see `deploy/README.md`) before upgrading, or
   every SSH call is refused.
 

@@ -1,0 +1,230 @@
+#!/bin/sh
+# Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# wan-selfheal — the class the other healers miss: PPPoE session "up",
+# WAN LED on, and still no usable internet.
+#
+# Observed 2026-09-03 (router clock lagged): ubus wan=up for ~33h, eth1
+# carrier=1, UDP DNS to a domestic resolver succeeded, every TCP connect
+# (domestic 443, 80, 53, and the tunnel listeners) reset or refused.
+# sing-box was in a procd crash loop because its start path fetched GitHub
+# rule-sets over that dead TCP. dns-selfheal restarted it every 5 min and
+# amplified the loop. podkop-selfheal could not refresh the subscription
+# for the same reason and never reached the local-ruleset rewrite.
+#
+# This script is fail-closed on the check (no proof of TCP → unhealthy),
+# bounded (hard timeouts, finite ladder, monotonic rate-limit via
+# /proc/uptime), and ACID on the only file it writes (config.json is
+# patched by sovereign-ruleset-local, which is idempotent). It never
+# reboots — that remains a human/supervisor decision. A false positive
+# must not take the household offline harder than it already is.
+#
+# Live 2026-09-03: ifdown/ifup wan did NOT restore TCP; PHY bounce of eth1
+# did. A one-shot ladder that saturates on "start sing-box" left the house
+# dark the second time TCP died. Repeatable remedy, rate-limited:
+#   no PPPoE session → bounce PPPoE
+#   session up, TCP dead → PHY bounce, then pin local rule-sets + start
+#     sing-box (GitHub fetch on start is a crash loop while TCP is RST).
+#
+# Usage: wan-selfheal          (normal: health-gated, rate-limited)
+#        wan-selfheal force    (skip the healthy-TCP gate)
+#        wan-selfheal dry      (report probes; no changes)
+
+set -u
+
+TAG=wan-selfheal
+STATE=/tmp/wan-selfheal.state
+WAN_NIC=$(uci -q get network.wan.device)
+WAN_NIC=${WAN_NIC:-eth1}
+MIN_INTERVAL=600
+TCP_TIMEOUT=5
+UDP_TIMEOUT=4
+PROBE=77.88.8.8
+
+MODE="${1:-run}"
+log() { logger -t "$TAG" "$1"; }
+
+uptime_s() { awk '{print int($1)}' /proc/uptime; }
+
+# Fail-closed UDP proof: nslookup must exit 0 and produce an Address line
+# beyond the Server header. Timeout-kill is failure, not health.
+udp_ok() {
+    out=/tmp/.wan-selfheal-udp.$$
+    : > "$out"
+    nslookup example.com "$PROBE" > "$out" 2>&1 &
+    pid=$!
+    ( sleep "$UDP_TIMEOUT"; kill -9 "$pid" 2>/dev/null ) &
+    watcher=$!
+    wait "$pid" 2>/dev/null
+    rc=$?
+    kill "$watcher" 2>/dev/null
+    wait "$watcher" 2>/dev/null
+    [ "$rc" -eq 0 ] || { rm -f "$out"; return 1; }
+    addr=$(grep -c "^Address" "$out" 2>/dev/null || echo 0)
+    rm -f "$out"
+    [ "${addr:-0}" -ge 2 ]
+}
+
+# Fail-closed TCP check. curl 0, or a TLS failure after the TCP handshake (35/51/60),
+# means the TCP handshake to the probe completed. It does not prove TLS or any
+# service works; a reset during the TLS handshake also lands in 35.
+# 7 (connect), 28 (timeout), 56 (reset) and anything else are failure.
+# 1.1.1.1 / 8.8.8.8:443 is not used — TSPU RSTs those on a working line.
+tcp_ok() {
+    curl -s -o /dev/null -m "$TCP_TIMEOUT" -k "https://${PROBE}/" >/dev/null 2>&1
+    rc=$?
+    case "$rc" in
+        0|35|51|60) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+ppp_session() { [ -d /sys/class/net/pppoe-wan ]; }
+carrier_up() {
+    [ -r "/sys/class/net/${WAN_NIC}/carrier" ] || return 1
+    [ "$(cat "/sys/class/net/${WAN_NIC}/carrier" 2>/dev/null)" = 1 ]
+}
+
+read_state() {
+    last=0
+    level=0
+    [ -f "$STATE" ] || return 0
+    last=$(sed -n 's/^last=//p' "$STATE" | head -1)
+    level=$(sed -n 's/^level=//p' "$STATE" | head -1)
+    last=${last:-0}
+    level=${level:-0}
+}
+
+write_state() {
+    now=$(uptime_s)
+    tmp="$STATE.$$"
+    printf 'last=%s\nlevel=%s\n' "$now" "$1" > "$tmp" || return 1
+    mv "$tmp" "$STATE"
+}
+
+wait_ppp() {
+    i=0
+    while [ "$i" -lt 20 ]; do
+        ppp_session && return 0
+        sleep 2
+        i=$((i + 1))
+    done
+    return 1
+}
+
+bounce_ppp() {
+    log "bouncing PPPoE (ifdown/ifup wan)"
+    ifdown wan
+    sleep 3
+    ifup wan
+    wait_ppp
+}
+
+bounce_phy() {
+    log "PHY bounce ${WAN_NIC} then PPPoE"
+    ifdown wan
+    ip link set "$WAN_NIC" down 2>/dev/null || true
+    sleep 2
+    ip link set "$WAN_NIC" up 2>/dev/null || true
+    sleep 4
+    ifup wan
+    wait_ppp
+}
+
+start_local_tunnel() {
+    if [ -x /usr/bin/sovereign-ruleset-local ]; then
+        /usr/bin/sovereign-ruleset-local >/dev/null 2>&1 || true
+    fi
+    if ! pidof sing-box >/dev/null 2>&1; then
+        log "starting sing-box after local rule-set rewrite"
+        /etc/init.d/sing-box start >/dev/null 2>&1 || true
+    fi
+}
+
+# --- dry: probes only -------------------------------------------------------
+if [ "$MODE" = dry ]; then
+    carrier_up && c=1 || c=0
+    ppp_session && p=session || p=missing
+    udp_ok && u=ok || u=fail
+    tcp_ok && t=ok || t=fail
+    pidof sing-box >/dev/null 2>&1 && s=running || s=dead
+    echo "carrier=$c ppp=$p udp=$u tcp=$t singbox=$s nic=${WAN_NIC}"
+    exit 0
+fi
+
+# Fail-open: a dead tunnel plus FakeIP tproxy blackholes LAN. Keep nft
+# off and DNS on a domestic UDP resolver until the tunnel is proven.
+if [ -f /etc/sovereign-failopen ]; then
+    nft delete table inet PodkopTable 2>/dev/null || true
+fi
+
+# Always pin rule-sets to flash copies when they exist. Cheap, idempotent,
+# and the only way sing-box can start when GitHub:443 is RST.
+if [ -x /usr/bin/sovereign-ruleset-local ]; then
+    /usr/bin/sovereign-ruleset-local >/dev/null 2>&1 || true
+fi
+
+# --- healthy gate -----------------------------------------------------------
+if [ "$MODE" = run ]; then
+    if tcp_ok; then
+        # TCP works: if sing-box is down, start it (local rule-sets already applied).
+        if ! pidof sing-box >/dev/null 2>&1; then
+            log "TCP ok but sing-box dead; starting"
+            /etc/init.d/sing-box start >/dev/null 2>&1 || true
+        fi
+        write_state 0
+        exit 0
+    fi
+    sleep 5
+    tcp_ok && exit 0
+fi
+
+# Confirm once more so a single blip never bounces the household uplink.
+if [ "$MODE" = run ]; then
+    sleep 5
+    tcp_ok && exit 0
+fi
+
+# --- rate limit (monotonic: /proc/uptime, immune to NTP step) ---------------
+read_state
+now=$(uptime_s)
+if [ "$MODE" = run ] && [ $((now - last)) -lt "$MIN_INTERVAL" ]; then
+    exit 0
+fi
+
+# No carrier: nothing on this device can create photons. Log and stop.
+if ! carrier_up; then
+    log "WAN NIC ${WAN_NIC} carrier down; not bouncing (L1 above us)"
+    write_state "$level"
+    exit 1
+fi
+
+# PPPoE-only bounce does not restore this class. PHY bounce does, and
+# must remain available every cycle — a saturating "start sing-box" step
+# was observed to leave TCP dead after the first recovery decayed.
+if ppp_session; then
+    bounce_phy
+else
+    bounce_ppp
+fi
+start_local_tunnel
+write_state 0
+
+# Bounded verify.
+i=0
+while [ "$i" -lt 6 ]; do
+    sleep 5
+    if tcp_ok; then
+        log "RECOVERED TCP after level $level"
+        start_local_tunnel
+        write_state 0
+        exit 0
+    fi
+    i=$((i + 1))
+done
+
+# UDP-up/TCP-down is the sticky class: keep trying the local tunnel in case
+# the exit listeners still accept VLESS while 443 is RST.
+udp_ok && start_local_tunnel
+log "TCP still dead after level $level (udp=$(udp_ok && echo ok || echo fail))"
+exit 1

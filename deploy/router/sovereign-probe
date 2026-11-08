@@ -31,11 +31,13 @@ ts=$(date +%s)
 # space-separated buffer line (ts= prefix gives the global timeline).
 line=$(sh "$TELEM" 2>/dev/null | tr '\n' ' ')
 echo "ts=$ts $line" >> "$BUF"
+chmod 600 "$BUF" 2>/dev/null || true
 
 # Ring bound: keep only the newest MAX_LINES (atomic swap; a failed swap leaves the
 # old buffer intact rather than truncating it).
 lines=$(wc -l < "$BUF" 2>/dev/null || echo 0)
 if [ "$lines" -gt "$MAX_LINES" ]; then
     tail -n "$MAX_LINES" "$BUF" > "$BUF.new" 2>/dev/null && mv "$BUF.new" "$BUF"
+    chmod 600 "$BUF" 2>/dev/null || true
 fi
 exit 0

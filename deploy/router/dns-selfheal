@@ -66,6 +66,13 @@ resolves() {
 
 resolves && exit 0
 
+# PPPoE is down: LAN DNS cannot succeed. Restarting sing-box will not
+# create a WAN session and only churns the proxy while pppd is in Discovery.
+if [ ! -d /sys/class/net/pppoe-wan ]; then
+    log "PPPoE down; DNS fail expected, not restarting sing-box"
+    exit 0
+fi
+
 # --- resolution failed: rate-limit before acting -----------------------------
 now=$(date +%s)
 last=$(cat "$STATE" 2>/dev/null || echo 0)
@@ -74,7 +81,12 @@ if [ "$MODE" = run ] && [ $((now - last)) -lt "$MIN_INTERVAL" ]; then
 fi
 echo "$now" > "$STATE"
 
-log "LAN DNS resolution failing ($TESTDOMAIN via 127.0.0.1); restarting sing-box"
+log "LAN DNS resolution failing ($TESTDOMAIN via 127.0.0.1); rewriting local rule-sets and restarting sing-box"
+# Remote GitHub rule-sets deadlock start when TCP/443 is RST. Pin to flash
+# copies first — otherwise this restart is the crash-loop amplifier.
+if [ -x /usr/bin/sovereign-ruleset-local ]; then
+    /usr/bin/sovereign-ruleset-local >/dev/null 2>&1 || true
+fi
 /etc/init.d/sing-box restart >/dev/null 2>&1
 
 # --- bounded verification -----------------------------------------------------

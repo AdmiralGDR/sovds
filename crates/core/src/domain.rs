@@ -84,10 +84,11 @@ pub struct NodeHealth {
     pub latency: Option<LatencyMs>,
 }
 
-/// Whether traffic actually flows THROUGH the WAN — measured by fetching a
-/// neutral external host, independent of the PPPoE session state. This is the
-/// signal that catches the "session up but blackholed" failure a session-status
-/// check cannot see.
+/// Whether TCP actually flows THROUGH the WAN — measured by reaching a
+/// domestic resolver on 443, independent of the PPPoE session state. This is
+/// the signal that catches the "session up but blackholed" failure a
+/// session-status check cannot see. Must not use 1.1.1.1/8.8.8.8: TSPU RSTs
+/// those on a working line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WanReach {
     /// A neutral external host answered through the WAN.
@@ -95,6 +96,24 @@ pub enum WanReach {
     /// The WAN session may be up, but nothing external answers.
     Blackhole,
     /// Not measured this cycle.
+    Unknown,
+}
+
+/// Physical carrier on the WAN NIC — independent of PPPoE session state.
+/// Distinguishes "cable/ONT dark" from "link up, Discovery failing".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Link {
+    Up,
+    Down,
+    Unknown,
+}
+
+/// PPPoE phase. `Discovery` means pppd is in PADI/PADO and has no session yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PppPhase {
+    Down,
+    Discovery,
+    Session,
     Unknown,
 }
 
@@ -119,6 +138,10 @@ pub struct Aux {
     pub mem_free_kb: Option<u32>,
     /// The exit node the urltest group currently routes through.
     pub active: Option<u8>,
+    pub link: Link,
+    /// WAN NIC speed in Mbps when carrier is up; `None` = not measured.
+    pub link_mbps: Option<u16>,
+    pub ppp: PppPhase,
 }
 
 impl Aux {
@@ -129,6 +152,9 @@ impl Aux {
         load_centi: None,
         mem_free_kb: None,
         active: None,
+        link: Link::Unknown,
+        link_mbps: None,
+        ppp: PppPhase::Unknown,
     };
 }
 

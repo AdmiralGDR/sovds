@@ -30,13 +30,20 @@ set -u
 TAG=podkop-selfheal
 CONF=/etc/podkop-selfheal.conf
 STATE=/tmp/podkop-selfheal.state
-API="http://192.168.1.1:9090"
+API="http://$(uci -q get network.lan.ipaddr):9090"
 PROBE_URL="http://cp.cloudflare.com/generate_204"
 MIN_INTERVAL=600      # rate-limit: at most one refresh per 10 min
 MAX_SERVERS=6         # cap urltest members (bounded probing)
 
 MODE="${1:-run}"
 log() { logger -t "$TAG" "$1"; }
+
+# Fail-open: FakeIP+tproxy with a dead tunnel blackholes the LAN.
+# wan-selfheal sets this marker; do not regenerate GitHub rule-sets or nft.
+if [ -f /etc/sovereign-failopen ]; then
+    log "fail-open active; not touching podkop"
+    exit 0
+fi
 
 # --- config: subscription URL ------------------------------------------------
 [ -r "$CONF" ] || { log "FATAL: missing $CONF"; exit 1; }
@@ -99,6 +106,13 @@ CNT=$(printf '%s\n' "$NEW" | grep -c 'vless://')
 if [ "${CNT:-0}" -lt 1 ]; then
     log "refresh aborted: no foreign servers in subscription (kept current config)"
     [ "$MODE" = dry ] && echo "no foreign servers found"
+    # Subscription fetch uses TCP. When TCP is RST the fetch fails, but the
+    # local rule-set rewrite does not need the network and is what lets
+    # sing-box start at all. Do that much; do not leave the crash loop up.
+    if [ "$MODE" != dry ] && [ -x /usr/bin/sovereign-ruleset-local ]; then
+        /usr/bin/sovereign-ruleset-local >/dev/null 2>&1 || true
+        pidof sing-box >/dev/null 2>&1 || /etc/init.d/sing-box start >/dev/null 2>&1 || true
+    fi
     exit 1
 fi
 
@@ -127,6 +141,8 @@ uci commit podkop
 echo "$now" > "$STATE"
 log "configured $CNT foreign server(s); reloading podkop"
 /etc/init.d/podkop restart >/dev/null 2>&1
+/usr/bin/sovereign-ruleset-local >/dev/null 2>&1 || true
+/etc/init.d/sing-box restart >/dev/null 2>&1 || true
 
 # --- 6. verify recovery (bounded) --------------------------------------------
 i=0

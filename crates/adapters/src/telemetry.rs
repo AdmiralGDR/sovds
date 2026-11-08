@@ -15,7 +15,8 @@
 use crate::os::{CommandRunner, RunError};
 use crate::ssh::SshExec;
 use sovereign_core::domain::{
-    Aux, Dns, LatencyMs, NodeHealth, NodeId, Proc, Telemetry, Tunnel, Wan, WanReach, MAX_NODES,
+    Aux, Dns, LatencyMs, Link, NodeHealth, NodeId, PppPhase, Proc, Telemetry, Tunnel, Wan,
+    WanReach, MAX_NODES,
 };
 use sovereign_core::error::ProbeError;
 use sovereign_core::failure::FailureClass;
@@ -37,8 +38,9 @@ pub const REMOTE_TELEMETRY_SCRIPT: &str = include_str!("../../../deploy/router/t
 /// The four core signals (`wan`, `singbox`, `tunnel`, `dns`) are mandatory; a
 /// missing or unrecognised one is a hostile/garbled input and is rejected.
 /// `node=<id>:<latency>` lines are optional and bounded by [`MAX_NODES`];
-/// auxiliary keys (`wanok`, `load`, `mem`, `active`) are optional too — a probe
-/// that failed to measure them simply omits them, and they parse to "unknown".
+/// auxiliary keys (`wanok`, `load`, `mem`, `active`, `link`, `linkmbps`, `ppp`)
+/// are optional too — a probe that failed to measure them simply omits them,
+/// and they parse to "unknown".
 pub fn parse_snapshot(text: &str) -> Result<Observation, ProbeError> {
     let mut wan: Option<Wan> = None;
     let mut singbox: Option<Proc> = None;
@@ -83,6 +85,24 @@ pub fn parse_snapshot(text: &str) -> Result<Observation, ProbeError> {
                 aux.mem_free_kb = Some(value.parse::<u32>().map_err(|_| ProbeError::Malformed)?)
             }
             "active" => aux.active = Some(value.parse::<u8>().map_err(|_| ProbeError::Malformed)?),
+            "link" => {
+                aux.link = match value {
+                    "1" => Link::Up,
+                    "0" => Link::Down,
+                    _ => return Err(ProbeError::Malformed),
+                }
+            }
+            "linkmbps" => {
+                aux.link_mbps = Some(value.parse::<u16>().map_err(|_| ProbeError::Malformed)?)
+            }
+            "ppp" => {
+                aux.ppp = match value {
+                    "down" => PppPhase::Down,
+                    "discovery" => PppPhase::Discovery,
+                    "up" => PppPhase::Session,
+                    _ => return Err(ProbeError::Malformed),
+                }
+            }
             "inject" => injected = Some(parse_failure_class(value)?),
             _ => return Err(ProbeError::Malformed),
         }
@@ -239,6 +259,31 @@ mod tests {
         assert_eq!(t.aux.mem_free_kb, Some(151_204));
         assert_eq!(t.aux.active, Some(4));
         Ok(())
+    }
+
+    #[test]
+    fn parses_link_and_pppoe_phase() -> Result<(), ProbeError> {
+        use sovereign_core::domain::{Link, PppPhase};
+        let text = format!("{GOOD}link=1\nlinkmbps=1000\nppp=up\n");
+        let t = parse_snapshot(&text)?.telemetry;
+        assert_eq!(t.aux.link, Link::Up);
+        assert_eq!(t.aux.link_mbps, Some(1000));
+        assert_eq!(t.aux.ppp, PppPhase::Session);
+        let down = parse_snapshot(&format!("{GOOD}link=0\nppp=discovery\n"))?.telemetry;
+        assert_eq!(down.aux.link, Link::Down);
+        assert_eq!(down.aux.link_mbps, None);
+        assert_eq!(down.aux.ppp, PppPhase::Discovery);
+        assert_eq!(parse_snapshot(GOOD)?.telemetry.aux.link, Link::Unknown);
+        assert_eq!(parse_snapshot(GOOD)?.telemetry.aux.ppp, PppPhase::Unknown);
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_garbled_link_and_ppp() {
+        for bad in ["link=maybe", "linkmbps=fast", "ppp=phase2"] {
+            let text = format!("{GOOD}{bad}\n");
+            assert_eq!(parse_snapshot(&text), Err(ProbeError::Malformed), "{bad}");
+        }
     }
 
     #[test]

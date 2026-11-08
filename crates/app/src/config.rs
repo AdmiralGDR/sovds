@@ -66,10 +66,11 @@ impl AppConfig {
                 .unwrap_or_else(|| "sovereign-router-alerts".to_string()),
             ntfy_timeout: Duration::from_secs(parse_u64("SOVEREIGN_NTFY_S", 10)),
             core: CoreConfig {
-                degraded_above: LatencyMs(parse_u32("SOVEREIGN_DEGRADED_MS", 800)),
-                // Default 5 (was 3), chosen by replaying 15h of real telemetry:
-                // it filters the transient node_dead probe-failure clusters that
-                // shorter hysteresis let through.
+                // 800 ms sat below the slower exit's ordinary RTT and labelled
+                // healthy samples as node_degraded. Relative slowdowns stay the
+                // adaptive layer's job.
+                degraded_above: LatencyMs(parse_u32("SOVEREIGN_DEGRADED_MS", 1500)),
+                // Replay showed far fewer disruptive actions with 5 than with 3.
                 confirm_threshold: u8::try_from(parse_u64("SOVEREIGN_CONFIRM", 5)).unwrap_or(5),
                 cooldown_ticks: parse_u64("SOVEREIGN_COOLDOWN", 3),
             },

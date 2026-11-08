@@ -3,11 +3,10 @@
 //! `sovereign-train` — the bridge from the sovds dataset to a sovml model, with a
 //! **cumulative** training loop.
 //!
-//! Features are the router's raw signals; the label is the diagnosed `class`. This
-//! first model learns to reproduce the rules from raw telemetry (the honest v1: it
-//! validates the whole train→infer→evaluate loop, and its errors reveal where raw
-//! signals miss the adaptive-refined diagnosis). The same pipeline is ready to
-//! train on ground-truth (`inject=`) labels as they accrue.
+//! Features are the router's raw signals; the default label is the diagnosed
+//! `class`. Pass `--inject` to train on ground-truth `inject=` labels instead,
+//! dropping unlabelled (organic) rows so the model can beat the rules rather
+//! than copy them.
 //!
 //! With `--save <model>`, the advantage **accumulates**: each run trains a
 //! candidate, evaluates it and the currently-saved model on the same held-out
@@ -25,7 +24,7 @@
 //! history the adaptive layer does. `--base` trains on raw per-record signals only.
 //!
 //! Usage:
-//! `sovereign-train [log] [--depth N] [--forest [N]] [--base] [--save model] [--history hist.log]`.
+//! `sovereign-train [log] [--depth N] [--forest [N]] [--base] [--inject] [--save model] [--history hist.log]`.
 
 use sovds::domain::Domain;
 use sovds::record::Record;
@@ -64,6 +63,7 @@ fn main() -> ExitCode {
     // default — they give the model the history the adaptive layer sees. --base
     // trains on raw per-record signals only, for a head-to-head comparison.
     let base_features = args.iter().any(|a| a == "--base");
+    let inject_labels = args.iter().any(|a| a == "--inject");
 
     let generations = std::env::var("SOVEREIGN_LOG_GENERATIONS")
         .ok()
@@ -80,14 +80,24 @@ fn main() -> ExitCode {
 
     let faults = RouterDomain::faults();
     let n_classes = faults.len();
+    let selected: Vec<&Record<RouterDomain>> = corpus
+        .records
+        .iter()
+        .filter(|r| pick_label(r.class, r.label, inject_labels).is_some())
+        .collect();
+    if selected.len() < 50 {
+        eprintln!(
+            "sovereign-train: too few labelled records to train ({}).",
+            selected.len()
+        );
+        return ExitCode::FAILURE;
+    }
+
     let rows: Vec<Vec<i64>> = if base_features {
-        corpus.records.iter().map(features).collect()
+        selected.iter().map(|r| features(r)).collect()
     } else {
-        // Stateful, causal transform over the chronological stream; reset at each
-        // run boundary (tick 0) so one run's baseline never leaks into the next.
         let mut wf = WindowFeatures::new(WindowConfig::new());
-        corpus
-            .records
+        selected
             .iter()
             .map(|r| {
                 if r.tick.0 == 0 {
@@ -105,10 +115,14 @@ fn main() -> ExitCode {
     } else {
         window::feature_names(RouterDomain::signal_names())
     };
-    let labels: Vec<u32> = corpus
-        .records
+    let labels: Vec<u32> = selected
         .iter()
-        .map(|r| class_index(r.class, faults))
+        .map(|r| {
+            class_index(
+                pick_label(r.class, r.label, inject_labels).unwrap_or(r.class),
+                faults,
+            )
+        })
         .collect();
 
     // Temporal split: train on the older 70%, test on the newer 30%.
@@ -150,6 +164,14 @@ fn main() -> ExitCode {
         },
     );
     println!(
+        "Labels: {}.",
+        if inject_labels {
+            "inject= ground truth (organic rows dropped)"
+        } else {
+            "diagnosed class="
+        },
+    );
+    println!(
         "Candidate: {} ({} nodes); accuracy {}‰, macro-F1 {}‰ over {} classes present.",
         candidate.kind(),
         candidate.total_nodes(),
@@ -166,7 +188,7 @@ fn main() -> ExitCode {
     // and only compare within a matching schema; a changed recipe re-baselines the
     // lineage honestly (no invalid comparison masquerading as progress).
     if let Some(save_path) = &save {
-        let tag = schema_tag(base_features, feat_names.len());
+        let tag = schema_tag(base_features, feat_names.len(), inject_labels);
         let meta_path = schema_sidecar(save_path);
         let prior_tag = std::fs::read_to_string(&meta_path)
             .ok()
@@ -226,7 +248,7 @@ fn main() -> ExitCode {
                 .unwrap_or(0);
             let line = format!(
                 "n={} ts={} cand_f1={} best_f1={} acc={}\n",
-                corpus.records.len(),
+                selected.len(),
                 last_ts,
                 cand_f1,
                 best_f1,
@@ -313,9 +335,10 @@ fn field(line: &str, key: &str) -> Option<String> {
 
 /// A short identifier for the feature representation a model was trained on. Two
 /// models are only comparable if these match (same recipe, same column count).
-fn schema_tag(base_features: bool, n_features: usize) -> String {
+fn schema_tag(base_features: bool, n_features: usize, inject_labels: bool) -> String {
     let mode = if base_features { "base" } else { "temporal" };
-    format!("{mode}:{n_features}")
+    let lab = if inject_labels { "inject" } else { "class" };
+    format!("{mode}:{n_features}:{lab}")
 }
 
 /// The sidecar path holding a saved model's [`schema_tag`] (e.g. `best.model.meta`).
@@ -337,6 +360,21 @@ fn class_index(c: FailureClass, faults: &[FailureClass]) -> u32 {
         .position(|&f| f == c)
         .and_then(|i| u32::try_from(i).ok())
         .unwrap_or(0)
+}
+
+/// Diagnosed `class` is the default label. `--inject` keeps only rows that carry
+/// ground-truth `inject=` and trains on that, so organic rule-output is not the
+/// target.
+fn pick_label(
+    class: FailureClass,
+    injected: Option<FailureClass>,
+    inject_mode: bool,
+) -> Option<FailureClass> {
+    if inject_mode {
+        injected
+    } else {
+        Some(class)
+    }
 }
 
 fn label_of(f: FailureClass) -> &'static str {
@@ -387,4 +425,35 @@ fn default_log_path() -> PathBuf {
     let mut path = PathBuf::from(home);
     path.push(".local/share/sovereign/records.log");
     path
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pick_label;
+    use sovereign_core::failure::FailureClass;
+
+    #[test]
+    fn diagnosed_mode_keeps_every_row() {
+        assert_eq!(
+            pick_label(FailureClass::None, None, false),
+            Some(FailureClass::None)
+        );
+        assert_eq!(
+            pick_label(
+                FailureClass::DnsFail,
+                Some(FailureClass::SingboxDead),
+                false
+            ),
+            Some(FailureClass::DnsFail)
+        );
+    }
+
+    #[test]
+    fn inject_mode_uses_ground_truth_and_drops_organic() {
+        assert_eq!(pick_label(FailureClass::DnsFail, None, true), None);
+        assert_eq!(
+            pick_label(FailureClass::None, Some(FailureClass::DnsFail), true),
+            Some(FailureClass::DnsFail)
+        );
+    }
 }

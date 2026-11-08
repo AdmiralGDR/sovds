@@ -106,25 +106,28 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let core = |confirm_threshold: u8| Config {
-        degraded_above: sovereign_core::domain::LatencyMs(800),
+    let core = |confirm_threshold: u8, degraded_ms: u32| Config {
+        degraded_above: sovereign_core::domain::LatencyMs(degraded_ms),
         confirm_threshold,
         cooldown_ticks: 3,
     };
 
-    let legacy = replay(&corpus.records, core(3), FleetConfig::legacy());
-    let tuned3 = replay(&corpus.records, core(3), FleetConfig::tuned());
-    let tuned5 = replay(&corpus.records, core(5), FleetConfig::tuned());
+    let legacy = replay(&corpus.records, core(3, 800), FleetConfig::legacy());
+    let tuned3 = replay(&corpus.records, core(3, 800), FleetConfig::tuned());
+    let tuned5 = replay(&corpus.records, core(5, 800), FleetConfig::tuned());
+    let tuned5_1500 = replay(&corpus.records, core(5, 1500), FleetConfig::tuned());
 
     println!("== replay over {} real records ==", corpus.records.len());
-    print_tally("legacy fleet, confirm=3", &legacy);
-    print_tally("tuned fleet, confirm=3", &tuned3);
-    print_tally("tuned fleet, confirm=5", &tuned5);
+    print_tally("legacy fleet, confirm=3, budget=800", &legacy);
+    print_tally("tuned fleet, confirm=3, budget=800", &tuned3);
+    print_tally("tuned fleet, confirm=5, budget=800", &tuned5);
+    print_tally("tuned fleet, confirm=5, budget=1500", &tuned5_1500);
     println!(
-        "\ndisruptive actions: legacy {} -> tuned/confirm3 {} -> tuned/confirm5 {}",
+        "\ndisruptive: legacy {} -> tuned/c3 {} -> tuned/c5/800 {} -> tuned/c5/1500 {}",
         legacy.disruptive(),
         tuned3.disruptive(),
-        tuned5.disruptive()
+        tuned5.disruptive(),
+        tuned5_1500.disruptive()
     );
     ExitCode::SUCCESS
 }

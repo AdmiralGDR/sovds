@@ -29,7 +29,7 @@ of keys and their value grammar is. A `-` value means "not measured / not
 applicable", never a fake zero.
 
 Framing tokens (toolkit-owned) are the first rows below; the rest are the router's
-observation (`wan`…`active`) and annotation (`verdict`…`outcome`).
+observation (`wan`…`ppp`) and annotation (`verdict`…`outcome`).
 
 | key | type / values | unit | meaning |
 |-----|---------------|------|---------|
@@ -41,10 +41,13 @@ observation (`wan`…`active`) and annotation (`verdict`…`outcome`).
 | `tun` | `ok:<lat>` \| `deg:<lat>` \| `dead` \| `unknown` | latency in ms | Tunnel data-path health through the selected node. `deg` = degraded. Required. |
 | `dns` | `ok` \| `failing` \| `unknown` | — | Name-resolution probe result. Required. |
 | `nodes` | `<id>:<lat>` / `<id>:x`, comma-sep, or `-` | latency in ms | Per-exit-node latency this cycle; `id:x` = seen but unmeasured; `-` = none. Optional (defaults empty). |
-| `wanok` | `1` \| `0` \| `-` | — | Real reachability **through** the WAN (curl to a neutral host). `0` = session may be up but blackholed. `-` = unmeasured. Optional (aux, defaults `-`). |
+| `wanok` | `1` \| `0` \| `-` | — | Real TCP reachability through the WAN. Probe is HTTPS to a domestic resolver (not 1.1.1.1/8.8.8.8 — TSPU RSTs those on a working line). `0` = session may be up but TCP is dead. `-` = unmeasured. Optional (aux, defaults `-`). |
 | `load` | u32 \| `-` | load×100 | Router 1-minute load average, integer fixed-point (`load=150` ⇒ 1.50). Optional. |
 | `mem` | u32 \| `-` | KiB | Router `MemAvailable`. Optional. |
 | `active` | u8 \| `-` | node id | Exit node the urltest group currently routes through. Optional. |
+| `link` | `1` \| `0` \| `-` | — | WAN NIC carrier. Independent of PPPoE session. Optional (defaults `-`). |
+| `linkmbps` | u16 \| `-` | Mbps | WAN NIC advertised speed when carrier is up. Optional. |
+| `ppp` | `up` \| `discovery` \| `down` \| `-` | — | PPPoE phase: session present, PADI/PADO in progress, or no pppd. Optional (defaults `-`). |
 | `verdict` | `warming` \| `healthy` \| `slow` \| `throttled` \| `down` | — | Adaptive path verdict (the fleet's judgement relative to the node's learned baseline). Required. |
 | `class` | `none` \| `wan_down` \| `singbox_dead` \| `node_dead` \| `node_degraded` \| `dns_fail` | — | The single fault the (refined) observation classified to. Required. |
 | `state` | `healthy` \| `suspect:<class>:<seen>` \| `cooldown:<class>:<level>:<until>` | — | Supervisor FSM state after this cycle. Required. |

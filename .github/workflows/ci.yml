@@ -40,3 +40,24 @@ jobs:
       # comparing every shipped binary's hash.
       - name: Builds are reproducible
         run: sh scripts/reproducible-build.sh
+
+      # On-router shell scripts: lint, then the offline checks with every
+      # router command stubbed and the network cut.
+      - name: Router scripts pass shellcheck
+        run: shellcheck -s sh deploy/router/dns-selfheal deploy/router/podkop-selfheal deploy/router/sovereign-autoinject deploy/router/sovereign-clash-local deploy/router/sovereign-probe deploy/router/sovereign-ruleset-local deploy/router/telemetry.sh deploy/router/wan-selfheal deploy/router/tests/*.sh scripts/test-router.sh
+
+      - name: Router scripts behave offline
+        run: sh scripts/test-router.sh
+
+  proofs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      # Toolchain pinned by proofs/lean-toolchain.
+      - name: Lean spec of classify builds
+        uses: leanprover/lean-action@ba3fdfe5c4476c925da13bf11a005ddb47e47aee # v1.7.1
+        with:
+          lake-package-directory: proofs

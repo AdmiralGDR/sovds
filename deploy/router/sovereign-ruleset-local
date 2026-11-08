@@ -1,0 +1,22 @@
+#!/bin/sh
+# Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Point sing-box rule-sets at files on flash. Remote GitHub fetches deadlock
+# when the tunnel is down (the box cannot resolve/reach GitHub without it).
+set -eu
+CFG=/etc/sing-box/config.json
+GB=/usr/share/sing-box/geoblock.srs
+YT=/usr/share/sing-box/youtube.srs
+[ -f "$CFG" ] && [ -f "$GB" ] && [ -f "$YT" ] || exit 0
+grep -q '"path": "/usr/share/sing-box/geoblock.srs"' "$CFG" 2>/dev/null && exit 0
+tmp="$CFG.$$"
+cp "$CFG" "$tmp" || exit 1
+sed \
+  -e 's/"type": "remote"/"type": "local"/g' \
+  -e 's|"url": "https://github.com/itdoginfo/allow-domains/releases/latest/download/geoblock.srs"|"path": "/usr/share/sing-box/geoblock.srs"|' \
+  -e 's|"url": "https://github.com/itdoginfo/allow-domains/releases/latest/download/youtube.srs"|"path": "/usr/share/sing-box/youtube.srs"|' \
+  -e '/"update_interval": "1d"/d' \
+  "$tmp" > "$tmp.out" || { rm -f "$tmp" "$tmp.out"; exit 1; }
+grep -q '"path": "/usr/share/sing-box/geoblock.srs"' "$tmp.out" || { rm -f "$tmp" "$tmp.out"; exit 1; }
+mv "$tmp.out" "$CFG"
+rm -f "$tmp"

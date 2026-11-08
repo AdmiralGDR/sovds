@@ -116,7 +116,7 @@ fn print_matrix(reports: &[ScenarioReport]) {
         let note = if r.warmup_actions > 0 {
             "  ← FALSE POSITIVE (acts before fault)"
         } else if r.name == "wan_blackhole" && r.detected == 0 {
-            "  ← GAP: classify ignores wanok"
+            "  ← GAP: classify still ignores wanok"
         } else if r.recovery_actions > 0 {
             "  ← recovery-lag (latched adaptive alarm)"
         } else {

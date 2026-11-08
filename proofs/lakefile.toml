@@ -1,0 +1,6 @@
+name = "sovcore"
+version = "0.1.0"
+defaultTargets = ["Sovcore"]
+
+[[lean_lib]]
+name = "Sovcore"

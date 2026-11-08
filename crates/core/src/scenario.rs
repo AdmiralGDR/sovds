@@ -102,6 +102,9 @@ fn healthy(i: u32) -> Telemetry {
             load_centi: Some(120u32.saturating_add(jitter(i))),
             mem_free_kb: Some(240_000),
             active: Some(1),
+            link: crate::domain::Link::Up,
+            link_mbps: Some(1000),
+            ppp: crate::domain::PppPhase::Session,
         },
     }
 }
@@ -127,8 +130,7 @@ fn wan_down(i: u32) -> Telemetry {
 
 /// WAN session *up* but blackholed: no external host answers, yet the session
 /// status and a stale tunnel probe still read healthy. The `wanok=0` aux signal is
-/// the only witness. Included to MEASURE a known gap — the current classifier does
-/// not consult `wan_reach`, so it will score 0% here (see the test).
+/// the only witness. Classified as `WanDown` so the ladder starts at BounceWan.
 fn wan_blackhole(i: u32) -> Telemetry {
     let mut t = healthy(i);
     if in_fault(i) {
@@ -488,18 +490,18 @@ mod tests {
         });
     }
 
-    /// KNOWN GAP, asserted so it cannot regress silently: a WAN blackhole (session
-    /// up, `wanok=0`) is invisible to the current classifier, which does not read
-    /// `wan_reach`. This pins the present behaviour; closing the gap is a separate,
-    /// data-driven change to `classify`.
+    /// Measured `wanok=0` with a live session is WanDown. The probe that feeds
+    /// `wan_reach` must itself be fail-closed UDP (not HTTP to 1.1.1.1 — TSPU
+    /// RSTs that path on a working line). This test assumes an honest probe.
     #[test]
-    fn wan_blackhole_is_not_yet_detected() {
+    fn wan_blackhole_is_detected_as_wan_down() {
         for_named(&["wan_blackhole"], |report| {
-            assert_eq!(
-                report.detected, 0,
-                "blackhole unexpectedly detected — if classify now reads wanok, update this test"
+            assert!(
+                report.detected > 0,
+                "measured blackhole must be classified WanDown"
             );
-            assert_eq!(report.action_at, None);
+            assert_eq!(report.first_action, Action::BounceWan);
+            assert!(report.action_at.is_some());
         });
     }
 

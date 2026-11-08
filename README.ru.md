@@ -121,8 +121,8 @@ sh scripts/verify-integrity.sh               # установленные бин
 - `sovereign-inject <class> [--secs N]` — включает **метку ground-truth-инъекции**.
 - `sovereign-export [log] [out.tsv]` — разворачивает датасет в TSV-таблицу признаков.
 - `sovereign-anomaly [log] [--top N]` — **unsupervised**-скан кандидатов на пробелы в правилах.
-- `sovereign-train [log] [--depth N]` — обучает интерпретируемое дерево решений
-  (`sovml`) на корпусе, оценивает на отложенной выборке.
+- `sovereign-train [log] [--depth N] [--inject]` — обучает интерпретируемое дерево решений
+  (`sovml`) на корпусе; `--inject` учит по меткам `inject=`, а не по `class=`.
 - `sovereign-replay` — переигрывает корпус с другими адаптивными настройками.
 - `sovereign-backfill` — дренаж без потерь резервного буфера роутера.
 - `sovereign-scenario` — переигрывает канонический набор сценариев сбоев через

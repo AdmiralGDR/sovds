@@ -1,0 +1,54 @@
+#!/bin/sh
+# Copyright (C) 2026 AdmiralGDR. Licensed under the GNU Affero General Public License v3.0 or later.
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# sovereign-autoinject — bounded, self-reverting labelled faults for the
+# ground-truth `inject=` series. Quota lives on flash so a reboot cannot
+# reset the counter (tmpfs did; that was the amplifier).
+set -eu
+MARKER=/tmp/sovereign-inject
+STATE=/etc/sovereign-autoinject.state
+KILL=/etc/sovereign-noinject
+COOLDOWN=14400
+QUOTA=60
+[ -f "$KILL" ] && exit 0
+[ -f "$MARKER" ] && exit 0
+now=$(date +%s)
+last=0
+count=0
+[ -f "$STATE" ] && {
+  last=$(sed -n "s/^last=//p" "$STATE")
+  count=$(sed -n "s/^count=//p" "$STATE")
+}
+[ $((now - ${last:-0})) -lt "$COOLDOWN" ] && exit 0
+[ "${count:-0}" -ge "$QUOTA" ] && exit 0
+pidof sing-box >/dev/null 2>&1 || exit 0
+# Inject only on a healthy line. Plain HTTP to 1.1.1.1/8.8.8.8 is reset by
+# TSPU on a working line, which kept this gate shut. Same check as
+# wan-selfheal: curl 0, or a TLS failure after the TCP handshake (35/51/60),
+# means the TCP handshake to the probe completed. It does not prove TLS or any
+# service works; a reset during the TLS handshake also lands in 35.
+# Any other result (connect failure, timeout, reset before TLS) skips this run.
+PROBE=${SOVEREIGN_INJECT_PROBE:-77.88.8.8}
+rc=0
+curl -s -o /dev/null -m5 -k "https://${PROBE}/" >/dev/null 2>&1 || rc=$?
+case "$rc" in
+  0|35|51|60) ;;
+  *) exit 0 ;;
+esac
+if [ $(( ${count:-0} % 2 )) -eq 0 ]; then
+  CLASS=singbox_dead
+  FAULT=75
+  BREAK="/etc/init.d/podkop stop >/dev/null 2>&1"
+  RESTORE="/etc/init.d/podkop start >/dev/null 2>&1"
+else
+  CLASS=dns_fail
+  FAULT=75
+  BREAK="iptables -I OUTPUT -o lo -p udp --dport 53 -d 127.0.0.1 -j DROP; iptables -I OUTPUT -o lo -p tcp --dport 53 -d 127.0.0.1 -j DROP"
+  RESTORE="while iptables -D OUTPUT -o lo -p udp --dport 53 -d 127.0.0.1 -j DROP 2>/dev/null; do :; done; while iptables -D OUTPUT -o lo -p tcp --dport 53 -d 127.0.0.1 -j DROP 2>/dev/null; do :; done"
+fi
+until=$((now + FAULT))
+printf "class=%s\nuntil=%s\n" "$CLASS" "$until" > "$MARKER"
+setsid sh -c "sleep $FAULT; $RESTORE; rm -f $MARKER" >/dev/null 2>&1 &
+sh -c "$BREAK" >/dev/null 2>&1 || true
+printf "last=%s\ncount=%s\n" "$now" "$((${count:-0} + 1))" > "$STATE"
+chmod 600 "$STATE" 2>/dev/null || true

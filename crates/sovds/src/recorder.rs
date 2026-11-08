@@ -63,11 +63,14 @@ impl Recorder {
 
         self.rotate_if_full(line.len() as u64);
 
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.path)
-            .map_err(|_| RecordError::Io)?;
+        let mut opts = OpenOptions::new();
+        opts.create(true).append(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
+        }
+        let mut file = opts.open(&self.path).map_err(|_| RecordError::Io)?;
         // A single write_all to an O_APPEND file is the atomic-append primitive.
         file.write_all(line.as_bytes())
             .map_err(|_| RecordError::Io)?;
@@ -130,6 +133,20 @@ mod tests {
         assert_eq!(body.lines().count(), 2);
         assert!(body.contains("t=1"));
         assert!(body.contains("class=overloaded"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn created_log_is_owner_readable_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = temp("mode");
+        let r = Recorder::new(path.clone(), 1_000_000, 1);
+        assert!(r.append::<Svc>(&rec(1, 100, Health::Ok)).is_ok());
+        let mode = std::fs::metadata(&path)
+            .map(|m| m.permissions().mode() & 0o777)
+            .unwrap_or(0);
+        assert_eq!(mode, 0o600);
         let _ = std::fs::remove_file(&path);
     }
 

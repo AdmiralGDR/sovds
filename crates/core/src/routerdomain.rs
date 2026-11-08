@@ -17,8 +17,8 @@
 //! this owns the router's observation and annotation tokens.
 
 use crate::domain::{
-    Aux, Dns, LatencyMs, NodeHealth, NodeId, Proc, Telemetry, Tick, Tunnel, Wan, WanReach,
-    MAX_NODES,
+    Aux, Dns, LatencyMs, Link, NodeHealth, NodeId, PppPhase, Proc, Telemetry, Tick, Tunnel, Wan,
+    WanReach, MAX_NODES,
 };
 use crate::failure::FailureClass;
 use crate::fleet::NodeVerdict;
@@ -168,6 +168,9 @@ impl Domain for RouterDomain {
             "load" => b.aux.load_centi = parse_opt_u32(value)?,
             "mem" => b.aux.mem_free_kb = parse_opt_u32(value)?,
             "active" => b.aux.active = parse_opt_u8(value)?,
+            "link" => b.aux.link = parse_link(value)?,
+            "linkmbps" => b.aux.link_mbps = parse_opt_u16(value)?,
+            "ppp" => b.aux.ppp = parse_ppp(value)?,
             "verdict" => b.verdict = Some(parse_verdict(value).ok_or(ParseError::BadField)?),
             "state" => b.state = Some(parse_state(value)?),
             "reason" => b.reason = Some(parse_reason(value)?),
@@ -209,6 +212,9 @@ impl Domain for RouterDomain {
             "load",
             "mem",
             "active",
+            "link_up",
+            "link_mbps",
+            "ppp",
         ]
     }
 
@@ -254,6 +260,18 @@ impl Domain for RouterDomain {
         sink(t.aux.load_centi.map(i64::from).unwrap_or(-1));
         sink(t.aux.mem_free_kb.map(i64::from).unwrap_or(-1));
         sink(t.aux.active.map(i64::from).unwrap_or(-1));
+        sink(match t.aux.link {
+            Link::Up => 1,
+            Link::Down => 0,
+            Link::Unknown => -1,
+        });
+        sink(t.aux.link_mbps.map(i64::from).unwrap_or(-1));
+        sink(match t.aux.ppp {
+            PppPhase::Down => 0,
+            PppPhase::Discovery => 1,
+            PppPhase::Session => 2,
+            PppPhase::Unknown => -1,
+        });
     }
 }
 
@@ -309,8 +327,23 @@ fn write_aux<W: Write>(w: &mut W, aux: &Aux) -> core::fmt::Result {
         None => w.write_str(" mem=-")?,
     }
     match aux.active {
-        Some(v) => write!(w, " active={v}"),
-        None => w.write_str(" active=-"),
+        Some(v) => write!(w, " active={v}")?,
+        None => w.write_str(" active=-")?,
+    }
+    match aux.link {
+        Link::Up => w.write_str(" link=1")?,
+        Link::Down => w.write_str(" link=0")?,
+        Link::Unknown => w.write_str(" link=-")?,
+    }
+    match aux.link_mbps {
+        Some(v) => write!(w, " linkmbps={v}")?,
+        None => w.write_str(" linkmbps=-")?,
+    }
+    match aux.ppp {
+        PppPhase::Down => w.write_str(" ppp=down"),
+        PppPhase::Discovery => w.write_str(" ppp=discovery"),
+        PppPhase::Session => w.write_str(" ppp=up"),
+        PppPhase::Unknown => w.write_str(" ppp=-"),
     }
 }
 
@@ -617,6 +650,35 @@ fn parse_opt_u8(value: &str) -> Result<Option<u8>, ParseError> {
     }
 }
 
+fn parse_opt_u16(value: &str) -> Result<Option<u16>, ParseError> {
+    match value {
+        "-" => Ok(None),
+        other => other
+            .parse::<u16>()
+            .map(Some)
+            .map_err(|_| ParseError::BadField),
+    }
+}
+
+fn parse_link(value: &str) -> Result<Link, ParseError> {
+    match value {
+        "1" => Ok(Link::Up),
+        "0" => Ok(Link::Down),
+        "-" => Ok(Link::Unknown),
+        _ => Err(ParseError::BadField),
+    }
+}
+
+fn parse_ppp(value: &str) -> Result<PppPhase, ParseError> {
+    match value {
+        "down" => Ok(PppPhase::Down),
+        "discovery" => Ok(PppPhase::Discovery),
+        "up" => Ok(PppPhase::Session),
+        "-" => Ok(PppPhase::Unknown),
+        _ => Err(ParseError::BadField),
+    }
+}
+
 fn parse_nodes(value: &str) -> Result<[Option<NodeHealth>; MAX_NODES], ParseError> {
     let mut nodes: [Option<NodeHealth>; MAX_NODES] = [None; MAX_NODES];
     if value == "-" {
@@ -636,4 +698,52 @@ fn parse_nodes(value: &str) -> Result<[Option<NodeHealth>; MAX_NODES], ParseErro
         }
     }
     Ok(nodes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RouterDomain;
+    use crate::domain::{Aux, Dns, Link, PppPhase, Proc, Telemetry, Tunnel, Wan, MAX_NODES};
+    use sovds::domain::Domain;
+
+    #[test]
+    fn signal_names_match_emitted_count() {
+        let t = Telemetry {
+            wan: Wan::Down,
+            singbox: Proc::Dead,
+            tunnel: Tunnel::Dead,
+            dns: Dns::Failing,
+            nodes: [None; MAX_NODES],
+            aux: Aux {
+                wan_reach: crate::domain::WanReach::Unknown,
+                load_centi: None,
+                mem_free_kb: None,
+                active: None,
+                link: Link::Down,
+                link_mbps: None,
+                ppp: PppPhase::Discovery,
+            },
+        };
+        let mut n = 0usize;
+        RouterDomain::signals(&t, &mut |_| n = n.saturating_add(1));
+        assert_eq!(n, RouterDomain::signal_names().len());
+        assert_eq!(
+            RouterDomain::signal_names(),
+            &[
+                "wan_up",
+                "singbox_up",
+                "tunnel_up",
+                "tunnel_ms",
+                "dns_ok",
+                "nodes_seen",
+                "wanok",
+                "load",
+                "mem",
+                "active",
+                "link_up",
+                "link_mbps",
+                "ppp",
+            ]
+        );
+    }
 }

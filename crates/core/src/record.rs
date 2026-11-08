@@ -89,6 +89,9 @@ mod tests {
             load_centi: Some(37),
             mem_free_kb: Some(151_204),
             active: Some(4),
+            link: crate::domain::Link::Down,
+            link_mbps: None,
+            ppp: crate::domain::PppPhase::Down,
         };
         cooldown.class = FailureClass::WanDown;
         cooldown.annot.verdict = NodeVerdict::Throttled;
@@ -158,6 +161,8 @@ mod tests {
         assert_eq!(parsed.class, FailureClass::None);
         assert_eq!(parsed.obs.wan, Wan::Up { uptime_s: 17992 });
         assert_eq!(parsed.annot.action, Action::Observe);
+        assert_eq!(parsed.obs.aux.link, crate::domain::Link::Unknown);
+        assert_eq!(parsed.obs.aux.ppp, crate::domain::PppPhase::Unknown);
         Ok(())
     }
 }

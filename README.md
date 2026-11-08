@@ -118,7 +118,8 @@ sh scripts/verify-integrity.sh               # installed binaries match SHA256SU
 - `sovereign-inject <class> [--secs N]` — arm a **ground-truth injection label**.
 - `sovereign-export [log] [out.tsv]` — flatten the dataset into a TSV feature table.
 - `sovereign-anomaly [log] [--top N]` — unsupervised scan for rule-gap candidates.
-- `sovereign-train [log] [--depth N]` — train an interpretable decision tree
+- `sovereign-train [log] [--depth N] [--inject]` — train an interpretable decision tree
+  (default label is diagnosed `class=`; `--inject` trains on ground-truth `inject=`).
   (`sovml`) on the corpus, evaluate against a held-out slice.
 - `sovereign-replay` — replay the corpus under different adaptive configs.
 - `sovereign-backfill` — loss-free drain of the router's fallback buffer.

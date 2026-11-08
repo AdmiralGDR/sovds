@@ -14,7 +14,12 @@ use sovereign_core::domain::NodeId;
 use sovereign_core::error::ActError;
 use sovereign_core::ports::{Actuation, Actuator};
 
-const API: &str = "http://192.168.1.1:9090";
+const API: &str = "http://$(uci -q get network.lan.ipaddr):9090";
+/// Pin rule-sets, then restart sing-box. The pin step's status is ignored on
+/// purpose: a missing helper must not block the restart, and the verify step
+/// decides the outcome.
+const RESTART_SINGBOX: &str = "/usr/bin/sovereign-ruleset-local >/dev/null 2>&1; \
+     /etc/init.d/sing-box restart >/dev/null 2>&1";
 const SELECTOR: &str = "vless_out-out";
 const AUTO_GROUP: &str = "vless_out-urltest-out";
 
@@ -65,10 +70,13 @@ impl<R: CommandRunner> Actuator for SshActuator<'_, R> {
         self.act_then_verify(&action, &verify, AUTO_GROUP)
     }
 
-    /// Restart the tunnel via podkop and confirm sing-box comes back.
+    /// Restart the tunnel process. Pin rule-sets to the on-flash copies
+    /// first: `podkop restart` regenerates config.json with GitHub URLs,
+    /// and sing-box then crash-loops when that fetch is RST. The rewrite
+    /// is idempotent and a no-op when the files are absent.
     fn restart_singbox(&self) -> Result<Actuation, ActError> {
         self.act_then_verify(
-            "/etc/init.d/podkop restart >/dev/null 2>&1",
+            RESTART_SINGBOX,
             "pidof sing-box >/dev/null 2>&1 && echo alive || echo gone",
             "alive",
         )
@@ -151,7 +159,7 @@ fn map_run_err(err: RunError) -> ActError {
 
 #[cfg(test)]
 mod tests {
-    use super::{map_run_err, AUTO_GROUP, SELECTOR};
+    use super::{map_run_err, API, AUTO_GROUP, RESTART_SINGBOX, SELECTOR};
     use crate::os::RunError;
     use sovereign_core::error::ActError;
 
@@ -170,5 +178,23 @@ mod tests {
     fn selector_and_auto_group_are_distinct() {
         // A switch that pointed the selector at itself would be a no-op.
         assert_ne!(SELECTOR, AUTO_GROUP);
+    }
+
+    #[test]
+    fn api_address_is_resolved_on_the_router() {
+        // The command runs in the router's shell, so `$(...)` must reach it
+        // unquoted and no fixed LAN address may remain.
+        assert_eq!(API, "http://$(uci -q get network.lan.ipaddr):9090");
+        assert!(!API.contains('\''));
+        assert!(!API.contains("192.168."));
+    }
+
+    #[test]
+    fn restart_pins_rule_sets_before_restarting_sing_box() {
+        let pin = RESTART_SINGBOX.find("sovereign-ruleset-local");
+        let restart = RESTART_SINGBOX.find("/etc/init.d/sing-box restart");
+        assert!(matches!((pin, restart), (Some(a), Some(b)) if a < b));
+        assert!(!RESTART_SINGBOX.contains("&&"));
+        assert!(!RESTART_SINGBOX.contains("podkop restart"));
     }
 }

@@ -40,12 +40,10 @@ pub struct FleetConfig {
 }
 
 impl FleetConfig {
-    /// Data-driven defaults, tuned from ~15 h of real telemetry (tunnel latency
-    /// p50 ≈ 439 ms, p95 ≈ 461, p99 ≈ 506, with a rare thin tail). The "normal"
-    /// band is narrow but noisy, so the original constants over-fired on ordinary
-    /// jitter. These widen the tolerance — a wider baseline, CUSUM slack above the
-    /// p99–p50 gap (~67 ms), and a higher spread floor — so only a genuine,
-    /// sustained departure from a node's own baseline is flagged.
+    /// Data-driven defaults, last retuned from 15 h when the selected-path band
+    /// was narrow (p50 ≈ 439, p95 ≈ 461). Later logs are bimodal across exits; that
+    /// tail is between-node geography, not within-node jitter, so these per-node
+    /// CUSUM constants stay; the static `degraded_above` budget is what moved.
     #[must_use]
     pub const fn tuned() -> Self {
         Self {

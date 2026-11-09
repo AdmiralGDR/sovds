@@ -5,6 +5,26 @@ Brain reference implementation. Dates are the working timeline, not release tags
 
 ## Unreleased
 
+
+### Changed
+- Router supervisor safety policy (configurable, conservative defaults):
+  - **Cable / no carrier (`link=Down`)**: WAN ladder is only `FailoverBackup`.
+    No `BounceWan`, no `Reboot` — matches on-router `wan-selfheal`, which
+    refuses to bounce when carrier is down. One `LinkDown` notification.
+  - **Flapping**: after a confirmed remedy, escalation level clears only after
+    `SOVEREIGN_RECOVER_STABLE` consecutive healthy cycles (default 3). A single
+    good cycle no longer restarts the ladder. Disruptive actions are capped at
+    `SOVEREIGN_ACTION_CAP` per `SOVEREIGN_ACTION_CAP_WINDOW` ticks (default
+    6 per 120 ≈ 1 h); when the cap hits, hold and notify once.
+  - **Probe failure (`probed=false`)**: FSM state, confirmation and cooldown are
+    frozen (not treated as recovery or as a new fault). After
+    `SOVEREIGN_UNOBSERVED_NOTIFY` dark cycles (default 20) one `TelemetryDark`
+    notice is sent.
+- Scenario suite asserts the new bounds; journal prints before/after counts.
+- Lean `classify` proofs unchanged (ladder / cap / stabilize are not in the Lean
+  model). Persistence of cooldown across controller restart remains a follow-up.
+
+
 ### Security
 - SSH host keys are now checked. The bridge used to run with
   `StrictHostKeyChecking=no` and `/dev/null` known_hosts, so anyone who could
@@ -34,6 +54,9 @@ Brain reference implementation. Dates are the working timeline, not release tags
   on a TSPU line it never injected. It now uses the check above; the probe
   address is `SOVEREIGN_INJECT_PROBE` (default `77.88.8.8`), and any other
   result still skips the run.
+- A failed probe no longer sends a "recovered" notification. The probe
+  outage still reads as no fault, so the state machine resets as before, but
+  nothing was observed to recover and the notice is suppressed.
 - `wan-selfheal` referenced an unset `$next` under `set -u` and aborted on its
   last log line when TCP stayed dead.
 - `dns-selfheal` / `restart_singbox` pin community rule-sets to flash
@@ -45,6 +68,10 @@ Brain reference implementation. Dates are the working timeline, not release tags
   start). Does not reboot. Rate-limited on `/proc/uptime`.
 
 ### Added
+- Sequential failure/recovery scenarios through the live supervisor with
+  synthetic telemetry and recorded actuation: transient faults, persistent
+  sing-box death, measured WAN blackhole, PPPoE discovery, link down, flapping,
+  probe outages, relapse after recovery and controller restart.
 - Offline checks for the on-router scripts (`deploy/router/tests`, run by
   `scripts/test-router.sh` inside a network namespace with every router
   command stubbed), plus shellcheck, in CI.

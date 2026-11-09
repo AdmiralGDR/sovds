@@ -65,14 +65,20 @@ impl AppConfig {
             ntfy_topic: var("SOVEREIGN_NTFY_TOPIC")
                 .unwrap_or_else(|| "sovereign-router-alerts".to_string()),
             ntfy_timeout: Duration::from_secs(parse_u64("SOVEREIGN_NTFY_S", 10)),
-            core: CoreConfig {
-                // 800 ms sat below the slower exit's ordinary RTT and labelled
-                // healthy samples as node_degraded. Relative slowdowns stay the
-                // adaptive layer's job.
-                degraded_above: LatencyMs(parse_u32("SOVEREIGN_DEGRADED_MS", 1500)),
-                // Replay showed far fewer disruptive actions with 5 than with 3.
-                confirm_threshold: u8::try_from(parse_u64("SOVEREIGN_CONFIRM", 5)).unwrap_or(5),
-                cooldown_ticks: parse_u64("SOVEREIGN_COOLDOWN", 3),
+            core: {
+                let mut core = CoreConfig::classic(
+                    LatencyMs(parse_u32("SOVEREIGN_DEGRADED_MS", 1500)),
+                    // Replay showed far fewer disruptive actions with 5 than with 3.
+                    u8::try_from(parse_u64("SOVEREIGN_CONFIRM", 5)).unwrap_or(5),
+                    parse_u64("SOVEREIGN_COOLDOWN", 3),
+                );
+                core.recover_stable_ticks =
+                    u8::try_from(parse_u64("SOVEREIGN_RECOVER_STABLE", 3)).unwrap_or(3);
+                core.action_cap = u8::try_from(parse_u64("SOVEREIGN_ACTION_CAP", 6)).unwrap_or(6);
+                core.action_cap_window = parse_u64("SOVEREIGN_ACTION_CAP_WINDOW", 120);
+                core.unobserved_notify_after =
+                    u8::try_from(parse_u64("SOVEREIGN_UNOBSERVED_NOTIFY", 20)).unwrap_or(20);
+                core
             },
             fleet: {
                 let t = FleetConfig::tuned();

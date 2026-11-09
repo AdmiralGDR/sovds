@@ -12,9 +12,10 @@
 
 use sovereign_core::domain::{Aux, Dns, NodeId, Proc, Telemetry, Tick, Tunnel, Wan, MAX_NODES};
 use sovereign_core::error::ActError;
-use sovereign_core::fleet::{Fleet, FleetConfig};
+use sovereign_core::failure::FailureClass;
+use sovereign_core::fleet::{Fleet, FleetConfig, NodeVerdict};
 use sovereign_core::fsm::{Action, Config, Reason, State};
-use sovereign_core::pipeline::decide_cycle;
+use sovereign_core::pipeline::{decide_cycle, CycleOutcome};
 use sovereign_core::ports::{Actuation, Actuator, Notifier, TelemetrySource};
 use sovereign_core::record::{Outcome, Record, RouterAnnot, Source};
 use std::time::Duration;
@@ -31,6 +32,14 @@ pub struct Supervisor<T, A, N> {
     /// Adaptive perception: learns each path/node's own baseline online so the
     /// classifier can flag relative degradation, not just absolute thresholds.
     fleet: Fleet,
+    /// Ticks at which a disruptive action was applied (ring, oldest first).
+    recent_actions: [u64; 32],
+    recent_len: u8,
+    /// One-shot flags so cap / dark notices do not spam.
+    cap_notified: bool,
+    dark_notified: bool,
+    /// Consecutive cycles where the probe failed.
+    unobserved_streak: u8,
 }
 
 impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
@@ -50,6 +59,11 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
             state: State::Healthy,
             tick: 0,
             fleet: Fleet::new(fleet_cfg),
+            recent_actions: [0; 32],
+            recent_len: 0,
+            cap_notified: false,
+            dark_notified: false,
+            unobserved_streak: 0,
         }
     }
 
@@ -64,14 +78,47 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
         let (observed, injected, probed) = match self.telemetry.sample() {
             Ok(obs) => (obs.telemetry, obs.injected, true),
             // Graceful degradation: an unobservable system is treated as all
-            // Unknown, which classifies as "no fault" — so a probe outage can
-            // never, by itself, trigger a disruptive action.
+            // Unknown for the *record*, but the FSM state is frozen — a probe
+            // outage must neither recover nor escalate.
             Err(_) => (all_unknown(), None, false),
         };
 
+        if !probed {
+            return self.step_unobserved(now, now_unix, observed);
+        }
+        self.unobserved_streak = 0;
+        self.dark_notified = false;
+
         // One cycle of pure decision logic (shared with the offline replay tool),
         // advancing the adaptive models and returning the decision.
-        let cycle = decide_cycle(self.state, &mut self.fleet, &observed, &self.cfg, now);
+        let mut cycle = decide_cycle(self.state, &mut self.fleet, &observed, &self.cfg, now);
+
+        // Sliding-window action cap: when hit, hold Observe and notify once.
+        if is_disruptive(cycle.action) && self.cap_reached(now.0) {
+            cycle.action = Action::Observe;
+            cycle.reason = Reason::ActionCapReached;
+            // Keep next_state from the decision (cooldown/stabilizing) so the
+            // ladder does not climb while we are capped; only suppress actuation.
+            if !self.cap_notified {
+                self.note(Reason::ActionCapReached);
+                self.cap_notified = true;
+            }
+            self.state = cycle.next_state;
+            return self.finish(
+                now,
+                now_unix,
+                true,
+                observed,
+                injected,
+                cycle,
+                Outcome::NotActed,
+            );
+        }
+        if is_disruptive(cycle.action) {
+            self.record_action(now.0);
+            self.cap_notified = false;
+        }
+
         self.state = cycle.next_state;
 
         let outcome = match self.apply(cycle.action) {
@@ -84,17 +131,62 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
         };
 
         if is_notable(cycle.reason) {
-            // The notifier is a courtesy and must never disturb the core, but a
-            // failure still has to reach someone — silently discarding it left no
-            // trace at all that a push was ever attempted.
-            if let Err(err) = self.notifier.notify(cycle.reason) {
-                eprintln!("sovereign: notification failed ({err:?}); continuing");
-            }
+            self.note(cycle.reason);
         }
 
+        self.finish(now, now_unix, true, observed, injected, cycle, outcome)
+    }
+
+    fn step_unobserved(&mut self, now: Tick, now_unix: u64, observed: Telemetry) -> Record {
+        self.unobserved_streak = self.unobserved_streak.saturating_add(1);
+        let threshold = self.cfg.unobserved_notify_after;
+        let reason = if threshold > 0 && self.unobserved_streak == threshold && !self.dark_notified
+        {
+            self.dark_notified = true;
+            let r = Reason::TelemetryDark {
+                cycles: self.unobserved_streak,
+            };
+            self.note(r);
+            r
+        } else {
+            Reason::CoolingDown
+        };
+        let cycle = CycleOutcome {
+            next_state: self.state,
+            reason,
+            action: Action::Observe,
+            verdict: NodeVerdict::Warming,
+            failure: FailureClass::None,
+        };
+        self.finish(
+            now,
+            now_unix,
+            false,
+            observed,
+            None,
+            cycle,
+            Outcome::NotActed,
+        )
+    }
+
+    fn note(&self, reason: Reason) {
+        if let Err(err) = self.notifier.notify(reason) {
+            eprintln!("sovereign: notification failed ({err:?}); continuing");
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn finish(
+        &mut self,
+        now: Tick,
+        now_unix: u64,
+        probed: bool,
+        observed: Telemetry,
+        injected: Option<FailureClass>,
+        cycle: CycleOutcome,
+        outcome: Outcome,
+    ) -> Record {
         self.tick = self.tick.saturating_add(1);
-        // The record carries the *raw* observation (ground truth) plus the learned
-        // verdict, so a future model sees both the signal and the adaptive read.
         Record {
             tick: now,
             wall_time: now_unix,
@@ -109,8 +201,40 @@ impl<T: TelemetrySource, A: Actuator, N: Notifier> Supervisor<T, A, N> {
                 outcome,
             },
             source: Source::Live,
-            // Ground truth: whether this cycle's fault was one we injected.
             label: injected,
+        }
+    }
+
+    fn cap_reached(&self, now_tick: u64) -> bool {
+        let cap = self.cfg.action_cap;
+        let window = self.cfg.action_cap_window;
+        if cap == 0 || window == 0 {
+            return false;
+        }
+        let start = now_tick.saturating_sub(window.saturating_sub(1));
+        let mut n = 0u8;
+        let len = usize::from(self.recent_len).min(self.recent_actions.len());
+        for slot in self.recent_actions.iter().take(len) {
+            if *slot >= start {
+                n = n.saturating_add(1);
+            }
+        }
+        n >= cap
+    }
+
+    fn record_action(&mut self, tick: u64) {
+        let len = usize::from(self.recent_len);
+        if len < self.recent_actions.len() {
+            if let Some(slot) = self.recent_actions.get_mut(len) {
+                *slot = tick;
+                self.recent_len = self.recent_len.saturating_add(1);
+            }
+            return;
+        }
+        // Drop the oldest.
+        self.recent_actions.copy_within(1.., 0);
+        if let Some(last) = self.recent_actions.last_mut() {
+            *last = tick;
         }
     }
 
@@ -178,9 +302,22 @@ fn all_unknown() -> Telemetry {
 fn is_notable(reason: Reason) -> bool {
     matches!(
         reason,
-        Reason::Confirmed { .. } | Reason::Escalated { .. } | Reason::Recovered
+        Reason::Confirmed { .. }
+            | Reason::Escalated { .. }
+            | Reason::Recovered
+            | Reason::LinkDown
+            | Reason::ActionCapReached
+            | Reason::TelemetryDark { .. }
     )
 }
+
+fn is_disruptive(action: Action) -> bool {
+    !matches!(action, Action::Observe)
+}
+
+#[cfg(test)]
+#[path = "supervisor_scenarios.rs"]
+mod scenarios;
 
 #[cfg(test)]
 mod tests {
@@ -282,11 +419,12 @@ mod tests {
     }
 
     fn cfg() -> Config {
-        Config {
-            degraded_above: LatencyMs(300),
-            confirm_threshold: 2,
-            cooldown_ticks: 2,
-        }
+        let mut c = Config::classic(LatencyMs(300), 2, 2);
+        // Unit tests below expect one healthy cycle to clear (legacy hysteresis).
+        c.recover_stable_ticks = 1;
+        c.action_cap = 0;
+        c.unobserved_notify_after = 0;
+        c
     }
 
     #[test]

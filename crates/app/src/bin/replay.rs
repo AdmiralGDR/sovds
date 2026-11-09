@@ -106,10 +106,16 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let core = |confirm_threshold: u8, degraded_ms: u32| Config {
-        degraded_above: sovereign_core::domain::LatencyMs(degraded_ms),
-        confirm_threshold,
-        cooldown_ticks: 3,
+    let core = |confirm_threshold: u8, degraded_ms: u32| {
+        let mut c = Config::classic(
+            sovereign_core::domain::LatencyMs(degraded_ms),
+            confirm_threshold,
+            3,
+        );
+        // Replay corpus predates recovery hysteresis; keep legacy 1-cycle clear.
+        c.recover_stable_ticks = 1;
+        c.action_cap = 0;
+        c
     };
 
     let legacy = replay(&corpus.records, core(3, 800), FleetConfig::legacy());

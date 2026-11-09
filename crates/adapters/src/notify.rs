@@ -79,6 +79,36 @@ pub fn render(reason: Reason) -> Note {
                 level
             ),
         },
+        Reason::Stabilizing { seen } => Note {
+            title: "Проверяю стабильность".to_string(),
+            priority: 2,
+            tags: "hourglass".to_string(),
+            body: format!(
+                "Сбой пропал ({seen} цикл(ов) подряд). Жду ещё, прежде чем считать восстановлением."
+            ),
+        },
+        Reason::LinkDown => Note {
+            title: "Кабель WAN без несущей".to_string(),
+            priority: 4,
+            tags: "warning,cable".to_string(),
+            body: "Физический линк WAN выключен. Переключение на запасной канал, если есть; перезагрузка и bounce интерфейса не помогут, пока кабель не подключён."
+                .to_string(),
+        },
+        Reason::ActionCapReached => Note {
+            title: "Лимит действий исчерпан".to_string(),
+            priority: 4,
+            tags: "no_entry".to_string(),
+            body: "Слишком много автоматических вмешательств за окно. Жду; нужен человек."
+                .to_string(),
+        },
+        Reason::TelemetryDark { cycles } => Note {
+            title: "Телеметрия недоступна".to_string(),
+            priority: 3,
+            tags: "grey_question".to_string(),
+            body: format!(
+                "Роутер не отвечает уже {cycles} цикл(ов). Состояние не сбрасываю и не действую."
+            ),
+        },
     }
 }
 

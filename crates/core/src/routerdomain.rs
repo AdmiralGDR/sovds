@@ -364,6 +364,21 @@ fn write_state<W: Write>(w: &mut W, state: State) -> core::fmt::Result {
             level,
             until.0
         ),
+        State::Stabilizing {
+            failing,
+            resume,
+            seen_ok,
+        } => {
+            write!(w, "stabilizing:{}:", failure_label(failing))?;
+            match resume {
+                crate::fsm::StabilizeResume::Unconfirmed { seen } => {
+                    write!(w, "u{seen}:{seen_ok}")
+                }
+                crate::fsm::StabilizeResume::Confirmed { level } => {
+                    write!(w, "c{level}:{seen_ok}")
+                }
+            }
+        }
     }
 }
 
@@ -382,6 +397,10 @@ fn write_reason<W: Write>(w: &mut W, reason: Reason) -> core::fmt::Result {
         Reason::Escalated { failing, level } => {
             write!(w, "escalated:{}:{}", failure_label(failing), level)
         }
+        Reason::Stabilizing { seen } => write!(w, "stabilizing:{seen}"),
+        Reason::LinkDown => w.write_str("link_down"),
+        Reason::ActionCapReached => w.write_str("action_cap"),
+        Reason::TelemetryDark { cycles } => write!(w, "telemetry_dark:{cycles}"),
     }
 }
 
@@ -507,6 +526,25 @@ fn parse_state(value: &str) -> Result<State, ParseError> {
                 until,
             })
         }
+        Some("stabilizing") => {
+            let failing = next_failure(&mut parts)?;
+            let tag = parts.next().ok_or(ParseError::BadField)?;
+            let seen_ok = next_u8(&mut parts)?;
+            let resume = if let Some(s) = tag.strip_prefix('u') {
+                crate::fsm::StabilizeResume::Unconfirmed { seen: parse_u8(s)? }
+            } else if let Some(s) = tag.strip_prefix('c') {
+                crate::fsm::StabilizeResume::Confirmed {
+                    level: parse_u8(s)?,
+                }
+            } else {
+                return Err(ParseError::BadField);
+            };
+            Ok(State::Stabilizing {
+                failing,
+                resume,
+                seen_ok,
+            })
+        }
         _ => Err(ParseError::BadField),
     }
 }
@@ -533,6 +571,14 @@ fn parse_reason(value: &str) -> Result<Reason, ParseError> {
             let level = next_u8(&mut parts)?;
             Ok(Reason::Escalated { failing, level })
         }
+        Some("stabilizing") => Ok(Reason::Stabilizing {
+            seen: next_u8(&mut parts)?,
+        }),
+        Some("link_down") => Ok(Reason::LinkDown),
+        Some("action_cap") => Ok(Reason::ActionCapReached),
+        Some("telemetry_dark") => Ok(Reason::TelemetryDark {
+            cycles: next_u8(&mut parts)?,
+        }),
         _ => Err(ParseError::BadField),
     }
 }

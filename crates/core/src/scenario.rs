@@ -368,11 +368,10 @@ mod tests {
 
     /// The live defaults (mirrors `AppConfig::from_env` without pulling in the app).
     fn cfg() -> Config {
-        Config {
-            degraded_above: LatencyMs(800),
-            confirm_threshold: 5,
-            cooldown_ticks: 3,
-        }
+        let mut c = Config::classic(LatencyMs(800), 5, 3);
+        c.recover_stable_ticks = 1;
+        c.action_cap = 0;
+        c
     }
 
     /// Evaluate every catalog scenario whose name is in `names`, asserting all of
